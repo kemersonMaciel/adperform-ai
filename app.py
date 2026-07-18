@@ -65,6 +65,10 @@ def gerar_dados_simulados() -> pd.DataFrame:
             "nome":      "Aquisição - Google Search",
             "canal":     "Google Ads",
             "budget":    900.0,
+            "cpc_min":   1.80,    # CPC mínimo realista (R$)
+            "cpc_max":   3.50,    # CPC máximo realista (R$)
+            "ctr_min":   0.020,   # CTR mínimo (2%)
+            "ctr_max":   0.045,   # CTR máximo (4.5%)
             "taxa_conv": 0.032,   # taxa de conversão base
             "ticket":    380.0,   # ticket médio base
         },
@@ -72,13 +76,21 @@ def gerar_dados_simulados() -> pd.DataFrame:
             "nome":      "Remarketing - Meta Ads",
             "canal":     "Meta Ads",
             "budget":    450.0,
-            "taxa_conv": 0.062,
+            "cpc_min":   0.90,
+            "cpc_max":   2.20,
+            "ctr_min":   0.015,
+            "ctr_max":   0.040,
+            "taxa_conv": 0.055,
             "ticket":    315.0,
         },
         {
             "nome":      "Prospecting - Meta Ads",
             "canal":     "Meta Ads",
             "budget":    650.0,
+            "cpc_min":   0.70,
+            "cpc_max":   1.80,
+            "ctr_min":   0.008,
+            "ctr_max":   0.025,
             "taxa_conv": 0.017,
             "ticket":    305.0,
         },
@@ -86,7 +98,11 @@ def gerar_dados_simulados() -> pd.DataFrame:
             "nome":      "Branded - Google Search",
             "canal":     "Google Ads",
             "budget":    200.0,
-            "taxa_conv": 0.085,
+            "cpc_min":   0.50,
+            "cpc_max":   1.20,
+            "ctr_min":   0.060,
+            "ctr_max":   0.120,
+            "taxa_conv": 0.080,
             "ticket":    405.0,
         },
     ]
@@ -105,8 +121,14 @@ def gerar_dados_simulados() -> pd.DataFrame:
             fator_total  = fator_dia * fator_random
 
             investimento = round(camp["budget"] * fator_total, 2)
-            impressoes   = int(investimento * random.uniform(120.0, 360.0))
-            cliques      = max(1, int(impressoes * random.uniform(0.013, 0.058)))
+
+            # CPC realista → determina cliques (evita CPC irreal de R$0,12)
+            cpc_dia  = random.uniform(camp["cpc_min"], camp["cpc_max"])
+            cliques  = max(1, int(investimento / cpc_dia))
+
+            # Impressões calculadas pelo CTR (não pelo investimento direto)
+            ctr_dia    = random.uniform(camp["ctr_min"], camp["ctr_max"])
+            impressoes = max(cliques, int(cliques / ctr_dia))
             conversoes   = max(0, int(
                 cliques * random.uniform(camp["taxa_conv"] * 0.4, camp["taxa_conv"] * 1.9)
             ))
