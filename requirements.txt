@@ -1,0 +1,19 @@
+# ============================================================
+# AdPerform AI — Dependências para Deploy no Streamlit Cloud
+# Testado com Python 3.11+
+# ============================================================
+
+# Interface e servidor web
+streamlit>=1.35.0
+
+# Manipulação e análise de dados
+pandas>=2.1.0
+
+# Gráficos interativos
+plotly>=5.20.0
+
+# Necessário para heatmap de cores na tabela (Pandas Styler.background_gradient)
+matplotlib>=3.8.0
+
+# Cliente oficial da API do Google Gemini
+google-generativeai>=0.7.2

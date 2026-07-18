@@ -1,0 +1,35 @@
+# ============================================================
+# ⚠️  NUNCA versione o arquivo de secrets!
+# ============================================================
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs e caches
+*.log
+.cache/
+'nsecrets.toml
