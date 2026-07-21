@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import io
 import random
 from datetime import datetime, timedelta
 from typing import Optional
@@ -194,6 +195,93 @@ def carregar_dados_planilha(url_csv: str) -> Optional[pd.DataFrame]:
 
     except Exception as exc:
         st.error(f"❌ Falha ao carregar planilha: {exc}")
+        return None
+
+
+def gerar_template_excel() -> bytes:
+    """
+    Gera um arquivo Excel (.xlsx) de template com a estrutura correta
+    de colunas e 4 linhas de exemplo.
+
+    O cliente baixa, preenche com dados reais exportados do Google Ads
+    ou Meta Ads, e sobe no app via file uploader.
+    """
+    df_template = pd.DataFrame({
+        "data":         ["2024-01-15", "2024-01-15", "2024-01-16", "2024-01-16"],
+        "campanha":     ["Aquisição - Google Search", "Remarketing - Meta Ads",
+                         "Aquisição - Google Search", "Remarketing - Meta Ads"],
+        "canal":        ["Google Ads", "Meta Ads", "Google Ads", "Meta Ads"],
+        "investimento": [850.00, 420.00, 910.00, 395.00],
+        "impressoes":   [42500, 28000, 45200, 26800],
+        "cliques":      [1275, 840, 1356, 804],
+        "conversoes":   [38, 46, 41, 50],
+        "receita":      [3150.00, 2135.00, 3380.00, 2280.00],
+    })
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_template.to_excel(writer, index=False, sheet_name="Dados")
+
+        instrucoes = pd.DataFrame({
+            "Coluna":      ["data", "campanha", "canal", "investimento",
+                            "impressoes", "cliques", "conversoes", "receita"],
+            "Tipo":        ["Data (AAAA-MM-DD)", "Texto", "Texto", "Número decimal",
+                            "Número inteiro", "Número inteiro", "Número inteiro", "Número decimal"],
+            "Exemplo":     ["2024-01-15", "Aquisição - Google Search", "Google Ads",
+                            "850.00", "42500", "1275", "38", "3150.00"],
+            "Obrigatório": ["Sim"] * 8,
+        })
+        instrucoes.to_excel(writer, index=False, sheet_name="Instruções")
+
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def carregar_dados_upload(arquivo) -> Optional[pd.DataFrame]:
+    """
+    Carrega dados de um arquivo CSV ou Excel enviado via st.file_uploader.
+
+    Formatos suportados: .csv | .xlsx | .xls
+
+    Returns:
+        DataFrame limpo ou None em caso de erro
+    """
+    try:
+        nome = arquivo.name.lower()
+
+        if nome.endswith(".csv"):
+            df = pd.read_csv(arquivo)
+        elif nome.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(arquivo, engine="openpyxl")
+        else:
+            st.error("❌ Formato não suportado. Use CSV ou Excel (.xlsx / .xls)")
+            return None
+
+        df.columns = df.columns.str.strip().str.lower()
+
+        colunas_esperadas = [
+            "data", "campanha", "canal", "investimento",
+            "impressoes", "cliques", "conversoes", "receita",
+        ]
+        faltando = [c for c in colunas_esperadas if c not in df.columns]
+        if faltando:
+            st.error(
+                f"❌ Colunas ausentes no arquivo: **{faltando}**  \n"
+                "Baixe o template na sidebar para ver o formato correto."
+            )
+            return None
+
+        df["data"]         = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
+        df["investimento"] = pd.to_numeric(df["investimento"], errors="coerce")
+        df["receita"]      = pd.to_numeric(df["receita"],      errors="coerce")
+        df["impressoes"]   = pd.to_numeric(df["impressoes"],   errors="coerce")
+        df["cliques"]      = pd.to_numeric(df["cliques"],      errors="coerce")
+        df["conversoes"]   = pd.to_numeric(df["conversoes"],   errors="coerce")
+
+        return df.dropna(subset=["data", "investimento"])
+
+    except Exception as exc:
+        st.error(f"❌ Erro ao processar arquivo: {exc}")
         return None
 
 
@@ -490,9 +578,14 @@ def grafico_roas_campanhas(metricas: dict) -> go.Figure:
 #     Sidebar, KPIs, gráficos e diagnóstico de IA
 # =============================================================
 
-def render_sidebar() -> tuple[str, str]:
+def render_sidebar() -> tuple[str, object, str]:
     """
-    Renderiza o painel lateral e retorna (url_planilha, api_key).
+    Renderiza o painel lateral e retorna (url_planilha, arquivo_upload, api_key).
+
+    Fontes de dados disponíveis (escolha via radio):
+      1. Dados Simulados  ← demo, sem configuração
+      2. Upload CSV/Excel ← cliente envia arquivo exportado do Google Ads/Meta
+      3. Google Sheets    ← link CSV público da planilha
 
     A API key é lida — em ordem de prioridade — de:
       1. st.secrets["GEMINI_API_KEY"]  ← Streamlit Cloud / secrets.toml local
@@ -503,12 +596,45 @@ def render_sidebar() -> tuple[str, str]:
         st.caption("Dashboard de Performance com Diagnóstico por IA")
         st.divider()
 
-        # ── Fonte de Dados ──────────────────────────────────────
+        # ── Seletor de Fonte de Dados ────────────────────────────
         st.markdown("### 📋 Fonte de Dados")
-        usar_sheets = st.toggle("Conectar Google Sheets", value=False)
-        url_planilha = ""
+        fonte_opcao = st.radio(
+            "Selecione a origem dos dados:",
+            ["📊 Dados Simulados", "📁 Upload CSV / Excel", "🔗 Google Sheets"],
+            index=0,
+            help=(
+                "Simulados: demo sem configuração  |  "
+                "Upload: arquivo exportado do Ads  |  "
+                "Sheets: planilha pública conectada"
+            ),
+        )
 
-        if usar_sheets:
+        url_planilha   = ""
+        arquivo_upload = None
+
+        # ── Upload de Arquivo ────────────────────────────────────
+        if fonte_opcao == "📁 Upload CSV / Excel":
+            st.caption("Formatos aceitos: **.csv** | **.xlsx** | **.xls**")
+            arquivo_upload = st.file_uploader(
+                "Selecione o arquivo",
+                type=["csv", "xlsx", "xls"],
+                help=(
+                    "O arquivo deve conter as colunas:\n"
+                    "data | campanha | canal | investimento | "
+                    "impressoes | cliques | conversoes | receita"
+                ),
+            )
+            # Template para download — cliente preenche e sobe
+            st.download_button(
+                label="⬇️ Baixar template Excel",
+                data=gerar_template_excel(),
+                file_name="template_adperform_ai.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Preencha o template com seus dados e faça o upload acima",
+            )
+
+        # ── Google Sheets ────────────────────────────────────────
+        elif fonte_opcao == "🔗 Google Sheets":
             url_planilha = st.text_input(
                 "URL CSV da planilha",
                 placeholder="https://docs.google.com/spreadsheets/d/...",
@@ -528,19 +654,14 @@ def render_sidebar() -> tuple[str, str]:
         api_key = ""
 
         try:
-            # Tenta carregar dos Secrets (produção no Streamlit Cloud)
             api_key = st.secrets["GEMINI_API_KEY"]
             st.success("✅ API Key carregada dos Secrets", icon="🔐")
         except (KeyError, FileNotFoundError):
-            # Fallback: input manual para desenvolvimento local
             api_key = st.text_input(
                 "Gemini API Key",
                 type="password",
                 placeholder="AIzaSy...",
-                help=(
-                    "Obtenha gratuitamente em:\n"
-                    "https://aistudio.google.com/app/apikey"
-                ),
+                help="Obtenha gratuitamente em: https://aistudio.google.com/app/apikey",
             )
             if not api_key:
                 st.info("Configure a API Key para ativar o diagnóstico.", icon="🔑")
@@ -548,10 +669,10 @@ def render_sidebar() -> tuple[str, str]:
         st.divider()
 
         # ── Rodapé da sidebar ───────────────────────────────────
-        st.caption("v1.0.0 — MVP de Performance AI")
+        st.caption("v1.1.0 — MVP de Performance AI")
         st.caption("Powered by Gemini 2.0 Flash + Streamlit")
 
-    return url_planilha, api_key
+    return url_planilha, arquivo_upload, api_key
 
 
 def render_kpis(metricas: dict) -> None:
@@ -642,7 +763,7 @@ def render_tabela_campanhas(metricas: dict) -> None:
 
 def main() -> None:
     # ── 1. Sidebar ─────────────────────────────────────────────
-    url_planilha, api_key = render_sidebar()
+    url_planilha, arquivo_upload, api_key = render_sidebar()
 
     # ── 2. Cabeçalho ───────────────────────────────────────────
     st.markdown("# 🚀 AdPerform AI")
@@ -653,10 +774,21 @@ def main() -> None:
     st.divider()
 
     # ── 3. Carregamento de dados ────────────────────────────────
+    # Prioridade: Upload > Google Sheets > Dados Simulados
     df: Optional[pd.DataFrame] = None
     fonte = "📊 Dados Simulados (demo)"
 
-    if url_planilha:
+    if arquivo_upload is not None:
+        with st.spinner(f"⏳ Processando arquivo {arquivo_upload.name}..."):
+            df = carregar_dados_upload(arquivo_upload)
+
+        if df is not None and not df.empty:
+            fonte = f"📁 Arquivo: {arquivo_upload.name}"
+            st.toast(f"✅ Arquivo carregado com sucesso! ({len(df)} registros)", icon="📂")
+        else:
+            st.warning("Não foi possível processar o arquivo. Usando dados simulados.")
+
+    elif url_planilha:
         with st.spinner("⏳ Carregando dados do Google Sheets..."):
             df = carregar_dados_planilha(url_planilha)
 

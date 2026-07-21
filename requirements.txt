@@ -12,8 +12,8 @@ pandas>=2.1.0
 # Gráficos interativos
 plotly>=5.20.0
 
-# Necessário para heatmap de cores na tabela (Pandas Styler.background_gradient)
-matplotlib>=3.8.0
-
 # Cliente oficial da API do Google Gemini
 google-generativeai>=0.7.2
+
+# Leitura e escrita de arquivos Excel (.xlsx)
+openpyxl>=3.1.0
