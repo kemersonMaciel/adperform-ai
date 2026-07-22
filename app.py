@@ -32,17 +32,211 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# CSS mínimo para polir métricas e espaçamentos
-st.markdown(
-    """
-    <style>
-    [data-testid="stMetricValue"] { font-size: 1.55rem; font-weight: 700; }
-    [data-testid="stMetricLabel"] { font-size: 0.82rem; color: #6b7280; }
-    .block-container { padding-top: 1.8rem; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# ── Design System completo: Navy Dark + Blue Accent ──
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+    --navy:         #080E1C;
+    --navy-card:    #0F172A;
+    --navy-hover:   #162035;
+    --navy-border:  rgba(59,130,246,0.13);
+    --blue:         #2563EB;
+    --blue-light:   #3B82F6;
+    --blue-glow:    rgba(37,99,235,0.18);
+    --green:        #10B981;
+    --green-dim:    rgba(16,185,129,0.12);
+    --red:          #EF4444;
+    --red-dim:      rgba(239,68,68,0.12);
+    --yellow:       #F59E0B;
+    --text-1:       #F1F5F9;
+    --text-2:       #94A3B8;
+    --text-3:       #64748B;
+}
+
+/* ── Base ── */
+html, body, .stApp {
+    background-color: var(--navy) !important;
+    font-family: 'Inter', sans-serif !important;
+    color: var(--text-1) !important;
+}
+.block-container { padding-top: 1.4rem !important; padding-bottom: 2rem !important; }
+#MainMenu, footer { visibility: hidden; }
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background: var(--navy-card) !important;
+    border-right: 1px solid var(--navy-border) !important;
+}
+[data-testid="stSidebar"] .block-container { padding-top: 1.2rem !important; }
+[data-testid="stSidebar"] label, [data-testid="stSidebar"] p,
+[data-testid="stSidebar"] .stRadio label { color: var(--text-2) !important; font-size: 0.83rem !important; }
+[data-testid="stSidebar"] h2 { color: var(--text-1) !important; font-size: 1.1rem !important; font-weight: 700 !important; }
+
+/* ── Inputs ── */
+.stTextInput input, .stFileUploader > div {
+    background: #0A111F !important;
+    border: 1px solid var(--navy-border) !important;
+    border-radius: 8px !important;
+    color: var(--text-1) !important;
+    font-size: 0.83rem !important;
+}
+.stTextInput input:focus { border-color: var(--blue-light) !important; box-shadow: 0 0 0 3px var(--blue-glow) !important; }
+
+/* ── Botão primário ── */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #1D4ED8 0%, #2563EB 100%) !important;
+    border: none !important; border-radius: 8px !important;
+    font-weight: 600 !important; letter-spacing: 0.02em !important;
+    color: #fff !important; transition: all 0.2s ease !important;
+    box-shadow: 0 2px 12px rgba(37,99,235,0.3) !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%) !important;
+    box-shadow: 0 4px 20px rgba(37,99,235,0.45) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── KPI Cards ── */
+.kpi-card {
+    background: var(--navy-card);
+    border: 1px solid var(--navy-border);
+    border-radius: 14px;
+    padding: 18px 20px 16px;
+    position: relative; overflow: hidden;
+    transition: all 0.25s ease;
+    height: 110px;
+}
+.kpi-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--blue), var(--blue-light), transparent);
+}
+.kpi-card:hover { border-color: rgba(59,130,246,0.32); background: var(--navy-hover); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.kpi-label { font-size: 0.68rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 8px; }
+.kpi-value { font-size: 1.65rem; font-weight: 800; color: var(--text-1); line-height: 1; margin-bottom: 6px; letter-spacing: -0.02em; }
+.kpi-delta-pos { font-size: 0.72rem; color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 3px; }
+.kpi-delta-neg { font-size: 0.72rem; color: var(--red); font-weight: 600; }
+.kpi-delta-neu { font-size: 0.72rem; color: var(--text-3); font-weight: 500; }
+
+/* ── Finance Cards ── */
+.fin-card {
+    background: var(--navy-card);
+    border: 1px solid var(--navy-border);
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+.fin-label { font-size: 0.68rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.fin-value { font-size: 1.3rem; font-weight: 700; color: var(--text-1); }
+.fin-value.green { color: var(--green); }
+.fin-value.red   { color: var(--red); }
+.fin-sub { font-size: 0.7rem; color: var(--text-3); margin-top: 3px; }
+
+/* ── Header Banner ── */
+.dash-header {
+    background: linear-gradient(135deg, #0D1F3C 0%, #080E1C 55%, #0A1529 100%);
+    border: 1px solid var(--navy-border);
+    border-radius: 16px;
+    padding: 26px 30px;
+    margin-bottom: 20px;
+    position: relative; overflow: hidden;
+}
+.dash-header::after {
+    content: '';
+    position: absolute; top: -80px; right: -60px;
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(37,99,235,0.07) 0%, transparent 70%);
+    pointer-events: none;
+}
+.dash-title { font-size: 1.85rem; font-weight: 800; color: var(--text-1); margin: 0 0 5px 0; letter-spacing: -0.03em; }
+.dash-sub   { font-size: 0.85rem; color: var(--text-2); margin: 0; }
+.dash-badges { display: flex; gap: 7px; margin-top: 14px; flex-wrap: wrap; }
+.badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 0.67rem; font-weight: 700; letter-spacing: 0.05em;
+}
+.badge-blue   { background: rgba(37,99,235,0.14); color: #93C5FD; border: 1px solid rgba(37,99,235,0.28); }
+.badge-green  { background: rgba(16,185,129,0.12); color: #6EE7B7; border: 1px solid rgba(16,185,129,0.28); }
+.badge-yellow { background: rgba(245,158,11,0.12); color: #FCD34D; border: 1px solid rgba(245,158,11,0.25); }
+
+/* ── Section Title ── */
+.sec-title {
+    font-size: 0.65rem; font-weight: 800; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.12em;
+    margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px;
+}
+.sec-title::after { content: ''; flex: 1; height: 1px; background: var(--navy-border); }
+
+/* ── Source Badge ── */
+.source-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(37,99,235,0.07); border: 1px solid rgba(37,99,235,0.18);
+    border-radius: 6px; padding: 5px 12px;
+    font-size: 0.72rem; color: #93C5FD; margin-bottom: 18px;
+    font-weight: 500;
+}
+
+/* ── Expander ── */
+[data-testid="stExpander"] {
+    background: var(--navy-card) !important;
+    border: 1px solid var(--navy-border) !important;
+    border-radius: 12px !important;
+}
+[data-testid="stExpander"] summary { color: var(--text-2) !important; font-size: 0.82rem !important; font-weight: 600 !important; }
+
+/* ── Divider ── */
+hr { border-color: var(--navy-border) !important; }
+
+/* ── Alert / Info ── */
+[data-testid="stAlert"] { background: rgba(37,99,235,0.07) !important; border-color: rgba(37,99,235,0.2) !important; border-radius: 10px !important; }
+
+/* ── Chat message (AI) ── */
+[data-testid="stChatMessage"] {
+    background: var(--navy-card) !important;
+    border: 1px solid var(--navy-border) !important;
+    border-radius: 14px !important;
+}
+
+/* ── Download button ── */
+.stDownloadButton > button {
+    background: transparent !important;
+    border: 1px solid var(--navy-border) !important;
+    color: var(--text-2) !important;
+    border-radius: 8px !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    transition: all 0.2s !important;
+}
+.stDownloadButton > button:hover {
+    border-color: var(--blue-light) !important;
+    color: var(--text-1) !important;
+    background: var(--blue-glow) !important;
+}
+
+/* ── Success / Warning ── */
+[data-testid="stNotification"] { border-radius: 10px !important; }
+
+/* ── Sidebar logo area ── */
+.sidebar-logo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 0 16px 0;
+    border-bottom: 1px solid var(--navy-border);
+    margin-bottom: 16px;
+}
+.sidebar-logo-icon { font-size: 1.6rem; }
+.sidebar-logo-text { line-height: 1.2; }
+.sidebar-logo-title { font-size: 1rem; font-weight: 800; color: var(--text-1); }
+.sidebar-logo-sub   { font-size: 0.67rem; color: var(--text-3); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ── Section headers ── */
+.sidebar-section {
+    font-size: 0.65rem; font-weight: 800; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.1em; margin: 16px 0 8px 0;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # =============================================================
@@ -574,164 +768,183 @@ def grafico_roas_campanhas(metricas: dict) -> go.Figure:
 
 
 # =============================================================
-# 🖥️  MÓDULO 5 — INTERFACE STREAMLIT
-#     Sidebar, KPIs, gráficos e diagnóstico de IA
+# 🖥️  MÓDULO 5 — INTERFACE STREAMLIT (Design Moderno)
+#     Sidebar, header, KPI cards, gráficos e diagnóstico de IA
 # =============================================================
 
 def render_sidebar() -> tuple[str, object, str]:
-    """
-    Renderiza o painel lateral e retorna (url_planilha, arquivo_upload, api_key).
-
-    Fontes de dados disponíveis (escolha via radio):
-      1. Dados Simulados  ← demo, sem configuração
-      2. Upload CSV/Excel ← cliente envia arquivo exportado do Google Ads/Meta
-      3. Google Sheets    ← link CSV público da planilha
-
-    A API key é lida — em ordem de prioridade — de:
-      1. st.secrets["GEMINI_API_KEY"]  ← Streamlit Cloud / secrets.toml local
-      2. Campo de texto na sidebar     ← modo desenvolvimento local
-    """
+    """Renderiza sidebar e retorna (url_planilha, arquivo_upload, api_key)."""
     with st.sidebar:
-        st.markdown("## 🚀 AdPerform AI")
-        st.caption("Dashboard de Performance com Diagnóstico por IA")
-        st.divider()
+        # ── Logo ─────────────────────────────────────────────────
+        st.markdown("""
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-icon">🚀</div>
+            <div class="sidebar-logo-text">
+                <div class="sidebar-logo-title">AdPerform AI</div>
+                <div class="sidebar-logo-sub">Performance Intelligence</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # ── Seletor de Fonte de Dados ────────────────────────────
-        st.markdown("### 📋 Fonte de Dados")
+        # ── Fonte de Dados ───────────────────────────────────────
+        st.markdown('<div class="sidebar-section">📋 Fonte de Dados</div>', unsafe_allow_html=True)
         fonte_opcao = st.radio(
-            "Selecione a origem dos dados:",
+            "Origem dos dados:",
             ["📊 Dados Simulados", "📁 Upload CSV / Excel", "🔗 Google Sheets"],
             index=0,
-            help=(
-                "Simulados: demo sem configuração  |  "
-                "Upload: arquivo exportado do Ads  |  "
-                "Sheets: planilha pública conectada"
-            ),
+            label_visibility="collapsed",
         )
 
         url_planilha   = ""
         arquivo_upload = None
 
-        # ── Upload de Arquivo ────────────────────────────────────
         if fonte_opcao == "📁 Upload CSV / Excel":
-            st.caption("Formatos aceitos: **.csv** | **.xlsx** | **.xls**")
             arquivo_upload = st.file_uploader(
-                "Selecione o arquivo",
+                "Arquivo",
                 type=["csv", "xlsx", "xls"],
-                help=(
-                    "O arquivo deve conter as colunas:\n"
-                    "data | campanha | canal | investimento | "
-                    "impressoes | cliques | conversoes | receita"
-                ),
+                help="Colunas obrigatórias: data | campanha | canal | investimento | impressoes | cliques | conversoes | receita",
+                label_visibility="collapsed",
             )
-            # Template para download — cliente preenche e sobe
             st.download_button(
                 label="⬇️ Baixar template Excel",
                 data=gerar_template_excel(),
                 file_name="template_adperform_ai.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Preencha o template com seus dados e faça o upload acima",
+                use_container_width=True,
             )
 
-        # ── Google Sheets ────────────────────────────────────────
         elif fonte_opcao == "🔗 Google Sheets":
             url_planilha = st.text_input(
-                "URL CSV da planilha",
-                placeholder="https://docs.google.com/spreadsheets/d/...",
-                help=(
-                    "Como obter a URL:\n"
-                    "Arquivo → Publicar na Web → "
-                    "Selecione a aba → Formato CSV → Publicar → Copie o link"
-                ),
+                "URL CSV",
+                placeholder="https://docs.google.com/spreadsheets/...",
+                help="Arquivo → Publicar na Web → Formato CSV → Publicar → Copie o link",
+                label_visibility="collapsed",
             )
             if url_planilha and "format=csv" not in url_planilha:
-                st.caption("💡 Certifique-se de que a URL termina com `format=csv`")
+                st.caption("💡 URL deve terminar com `format=csv`")
 
-        st.divider()
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── API Key Gemini ──────────────────────────────────────
-        st.markdown("### 🤖 Gemini AI")
+        # ── Gemini AI ────────────────────────────────────────────
+        st.markdown('<div class="sidebar-section">🤖 Gemini AI</div>', unsafe_allow_html=True)
         api_key = ""
 
         try:
             api_key = st.secrets["GEMINI_API_KEY"]
-            st.success("✅ API Key carregada dos Secrets", icon="🔐")
+            st.markdown("""
+            <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);
+                        border-radius:8px;padding:8px 12px;font-size:0.75rem;color:#6EE7B7;
+                        display:flex;align-items:center;gap:6px;">
+                🔐 API Key ativa e segura
+            </div>
+            """, unsafe_allow_html=True)
         except (KeyError, FileNotFoundError):
             api_key = st.text_input(
-                "Gemini API Key",
+                "API Key",
                 type="password",
                 placeholder="AIzaSy...",
-                help="Obtenha gratuitamente em: https://aistudio.google.com/app/apikey",
+                label_visibility="collapsed",
+                help="Obtenha em: aistudio.google.com/app/apikey",
             )
             if not api_key:
-                st.info("Configure a API Key para ativar o diagnóstico.", icon="🔑")
+                st.markdown("""
+                <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.22);
+                            border-radius:8px;padding:8px 12px;font-size:0.73rem;color:#FCD34D;">
+                    ⚠️ Configure a API Key para ativar a IA
+                </div>
+                """, unsafe_allow_html=True)
 
-        st.divider()
-
-        # ── Rodapé da sidebar ───────────────────────────────────
-        st.caption("v1.1.0 — MVP de Performance AI")
-        st.caption("Powered by Gemini 2.0 Flash + Streamlit")
+        # ── Rodapé ───────────────────────────────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="border-top:1px solid rgba(59,130,246,0.1);padding-top:12px;">
+            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v1.2.0 · AdPerform AI</div>
+            <div style="font-size:0.63rem;color:#1E293B;margin-top:3px;">Gemini 2.0 Flash · Streamlit</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     return url_planilha, arquivo_upload, api_key
 
 
-def render_kpis(metricas: dict) -> None:
-    """Renderiza 5 cards de KPIs no topo do dashboard."""
-    roas       = metricas["roas"]
-    meta_ok    = roas >= 3.0
-    delta_roas = f"✅ Acima da meta (3×)" if meta_ok else "⚠️ Abaixo da meta (3×)"
-    cor_delta  = "normal" if meta_ok else "inverse"
+def render_header(fonte: str, data_ini: str, data_fim: str, api_key: str) -> None:
+    """Renderiza o banner de cabeçalho com badges de status."""
+    ai_badge = (
+        '<span class="badge badge-green">✅ Gemini AI Ativo</span>'
+        if api_key else
+        '<span class="badge badge-yellow">⚠️ IA não configurada</span>'
+    )
+    st.markdown(f"""
+    <div class="dash-header">
+        <div class="dash-title">🚀 AdPerform AI</div>
+        <div class="dash-sub">Dashboard de Performance de Vendas com Diagnóstico Automatizado por IA</div>
+        <div class="dash-badges">
+            <span class="badge badge-blue">📊 Gestores de Tráfego</span>
+            <span class="badge badge-green">🔒 Dados Protegidos</span>
+            {ai_badge}
+            <span class="badge badge-blue">📅 {data_ini} → {data_fim}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
 
-    c1.metric(
-        label="💰 ROAS",
-        value=f"{roas:.2f}×",
-        delta=delta_roas,
-        delta_color=cor_delta,
-        help="Return on Ad Spend = Receita / Investimento",
-    )
-    c2.metric(
-        label="🎯 CPA",
-        value=f"R$ {metricas['cpa']:,.2f}",
-        help="Custo por Aquisição = Investimento / Conversões",
-    )
-    c3.metric(
-        label="🖱️ CPC",
-        value=f"R$ {metricas['cpc']:,.2f}",
-        help="Custo por Clique = Investimento / Cliques",
-    )
-    c4.metric(
-        label="👁️ CTR",
-        value=f"{metricas['ctr']:.2f}%",
-        help="Click-Through Rate = Cliques / Impressões",
-    )
-    c5.metric(
-        label="✅ Taxa de Conversão",
-        value=f"{metricas['taxa_conversao']:.2f}%",
-        help="Taxa de Conversão = Conversões / Cliques",
-    )
+def render_kpis_cards(metricas: dict) -> None:
+    """Renderiza 5 KPI cards customizados com hover effect e barra azul no topo."""
+    roas    = metricas["roas"]
+    ok_roas = roas >= 3.0
+
+    kpis = [
+        ("ROAS",           f"{roas:.2f}×",
+         "kpi-delta-pos" if ok_roas else "kpi-delta-neg",
+         "✅ Acima da meta (3×)" if ok_roas else "⚠️ Abaixo da meta (3×)"),
+        ("CPA",            f"R$ {metricas['cpa']:,.2f}",   "kpi-delta-neu", "Custo por Aquisição"),
+        ("CPC",            f"R$ {metricas['cpc']:,.2f}",   "kpi-delta-neu", "Custo por Clique"),
+        ("CTR",            f"{metricas['ctr']:.2f}%",      "kpi-delta-neu", "Click-Through Rate"),
+        ("CONV. RATE",     f"{metricas['taxa_conversao']:.2f}%", "kpi-delta-neu", "Taxa de Conversão"),
+    ]
+
+    cols = st.columns(5)
+    for col, (label, value, delta_cls, delta_txt) in zip(cols, kpis):
+        col.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="{delta_cls}">{delta_txt}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def render_resumo_financeiro(metricas: dict) -> None:
-    """Renderiza 3 cards com o resumo financeiro do período."""
-    c1, c2, c3 = st.columns(3)
-    lucro = metricas["lucro_liquido"]
+    """Renderiza 3 finance cards com investimento, receita e lucro."""
+    lucro       = metricas["lucro_liquido"]
+    lucro_class = "green" if lucro > 0 else "red"
+    lucro_icon  = "📈" if lucro > 0 else "📉"
 
-    c1.metric("💸 Investimento Total", f"R$ {metricas['investimento_total']:,.2f}")
-    c2.metric("💵 Receita Gerada",     f"R$ {metricas['receita_total']:,.2f}")
-    c3.metric(
-        "📈 Lucro Líquido",
-        f"R$ {lucro:,.2f}",
-        delta="Positivo" if lucro > 0 else "Negativo",
-        delta_color="normal" if lucro > 0 else "inverse",
-    )
+    c1, c2, c3 = st.columns(3)
+    cards = [
+        (c1, "💸 INVESTIMENTO TOTAL",
+         f"R$ {metricas['investimento_total']:,.2f}", "",
+         f"{metricas['total_cliques']:,} cliques gerados"),
+        (c2, "💵 RECEITA GERADA",
+         f"R$ {metricas['receita_total']:,.2f}", "green",
+         f"{metricas['total_conversoes']:,} conversões"),
+        (c3, f"{lucro_icon} LUCRO LÍQUIDO",
+         f"R$ {lucro:,.2f}", lucro_class,
+         "Receita − Investimento"),
+    ]
+    for col, label, value, val_class, sub in cards:
+        col.markdown(f"""
+        <div class="fin-card">
+            <div class="fin-label">{label}</div>
+            <div class="fin-value {val_class}">{value}</div>
+            <div class="fin-sub">{sub}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def render_tabela_campanhas(metricas: dict) -> None:
     """
-    Tabela formatada com heatmap de ROAS e CPA por campanha.
-    Cores: verde = bom, vermelho = ruim.
+    Tabela de performance por campanha com cores semânticas.
+    Usa .map() em vez de background_gradient — sem dependência de matplotlib.
     """
     df_exib = metricas["por_campanha"].copy()
     df_exib = df_exib.sort_values("roas", ascending=False)
@@ -739,6 +952,23 @@ def render_tabela_campanhas(metricas: dict) -> None:
         "Campanha", "Canal", "Invest. (R$)", "Receita (R$)",
         "Conversões", "Cliques", "Impressões", "ROAS", "CPA (R$)", "CTR (%)",
     ]
+
+    def cor_roas(val):
+        try:
+            v = float(str(val).replace("×", "").strip())
+            if v >= 4.0:   return "color: #10B981; font-weight: 700"
+            elif v >= 3.0: return "color: #6EE7B7; font-weight: 600"
+            elif v >= 2.0: return "color: #F59E0B; font-weight: 600"
+            else:          return "color: #EF4444; font-weight: 700"
+        except Exception:  return ""
+
+    def cor_cpa(val):
+        try:
+            v = float(str(val).replace("R$", "").replace(",", "").strip())
+            if v <= 30:    return "color: #10B981; font-weight: 600"
+            elif v <= 60:  return "color: #F59E0B; font-weight: 600"
+            else:          return "color: #EF4444; font-weight: 700"
+        except Exception:  return ""
 
     st.dataframe(
         df_exib.style
@@ -749,8 +979,8 @@ def render_tabela_campanhas(metricas: dict) -> None:
                 "ROAS":         "{:.2f}×",
                 "CTR (%)":      "{:.2f}%",
             })
-            .background_gradient(subset=["ROAS"],    cmap="RdYlGn", vmin=1.0, vmax=5.5)
-            .background_gradient(subset=["CPA (R$)"], cmap="RdYlGn_r"),
+            .map(cor_roas, subset=["ROAS"])
+            .map(cor_cpa,  subset=["CPA (R$)"]),
         use_container_width=True,
         hide_index=True,
         height=230,
@@ -765,106 +995,114 @@ def main() -> None:
     # ── 1. Sidebar ─────────────────────────────────────────────
     url_planilha, arquivo_upload, api_key = render_sidebar()
 
-    # ── 2. Cabeçalho ───────────────────────────────────────────
-    st.markdown("# 🚀 AdPerform AI")
-    st.markdown(
-        "**Dashboard de Performance de Vendas com Diagnóstico Automatizado por IA**  \n"
-        "*Para Gestores de Tráfego Pago e Agências de Marketing*"
-    )
-    st.divider()
-
-    # ── 3. Carregamento de dados ────────────────────────────────
-    # Prioridade: Upload > Google Sheets > Dados Simulados
+    # ── 2. Carregamento de dados (Prioridade: Upload > Sheets > Simulados) ──
     df: Optional[pd.DataFrame] = None
-    fonte = "📊 Dados Simulados (demo)"
+    fonte = "📊 Dados Simulados"
 
     if arquivo_upload is not None:
-        with st.spinner(f"⏳ Processando arquivo {arquivo_upload.name}..."):
+        with st.spinner(f"⏳ Processando {arquivo_upload.name}..."):
             df = carregar_dados_upload(arquivo_upload)
-
         if df is not None and not df.empty:
-            fonte = f"📁 Arquivo: {arquivo_upload.name}"
-            st.toast(f"✅ Arquivo carregado com sucesso! ({len(df)} registros)", icon="📂")
+            fonte = f"📁 {arquivo_upload.name}"
+            st.toast(f"✅ {len(df)} registros carregados", icon="📂")
         else:
-            st.warning("Não foi possível processar o arquivo. Usando dados simulados.")
+            st.warning("Arquivo inválido. Usando dados simulados.")
 
     elif url_planilha:
-        with st.spinner("⏳ Carregando dados do Google Sheets..."):
+        with st.spinner("⏳ Conectando ao Google Sheets..."):
             df = carregar_dados_planilha(url_planilha)
-
         if df is not None and not df.empty:
-            fonte = "🔗 Google Sheets (live)"
-            st.toast("✅ Planilha carregada com sucesso!", icon="📋")
+            fonte = "🔗 Google Sheets"
+            st.toast("✅ Planilha conectada!", icon="📋")
         else:
-            st.warning("Não foi possível carregar a planilha. Usando dados simulados.")
+            st.warning("Não foi possível carregar. Usando dados simulados.")
 
     if df is None or df.empty:
         df = gerar_dados_simulados()
         df["data"] = pd.to_datetime(df["data"])
 
-    # Caption com metadados da fonte
     data_ini = df["data"].min().strftime("%d/%m/%Y")
     data_fim = df["data"].max().strftime("%d/%m/%Y")
-    st.caption(
-        f"Fonte: **{fonte}** &nbsp;|&nbsp; "
-        f"Período: {data_ini} → {data_fim} &nbsp;|&nbsp; "
-        f"{len(df):,} registros carregados"
-    )
 
-    # ── 4. Cálculo de métricas ──────────────────────────────────
+    # ── 3. Header ──────────────────────────────────────────────
+    render_header(fonte, data_ini, data_fim, api_key)
+
+    # Tag de fonte de dados
+    st.markdown(f"""
+    <div class="source-tag">
+        {fonte} &nbsp;·&nbsp; {data_ini} → {data_fim} &nbsp;·&nbsp; {len(df):,} registros
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 4. Métricas ─────────────────────────────────────────────
     metricas = calcular_metricas(df)
 
-    # ── 5. KPIs principais ──────────────────────────────────────
-    st.subheader("📊 KPIs do Período")
-    render_kpis(metricas)
+    # ── 5. KPI Cards ────────────────────────────────────────────
+    st.markdown('<div class="sec-title">📊 KPIs do Período</div>', unsafe_allow_html=True)
+    render_kpis_cards(metricas)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 6. Resumo Financeiro ────────────────────────────────────
+    st.markdown('<div class="sec-title">💰 Resumo Financeiro</div>', unsafe_allow_html=True)
     render_resumo_financeiro(metricas)
 
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<hr style="border-color:rgba(59,130,246,0.1);margin:4px 0 20px;">', unsafe_allow_html=True)
 
-    # ── 6. Gráficos ─────────────────────────────────────────────
+    # ── 7. Gráficos ─────────────────────────────────────────────
+    st.markdown('<div class="sec-title">📈 Análise Visual</div>', unsafe_allow_html=True)
     col_g1, col_g2 = st.columns([3, 2], gap="medium")
     with col_g1:
         st.plotly_chart(grafico_investimento_receita(df), use_container_width=True)
     with col_g2:
         st.plotly_chart(grafico_roas_campanhas(metricas), use_container_width=True)
 
-    # ── 7. Tabela detalhada (colapsável) ────────────────────────
+    # ── 8. Tabela detalhada ─────────────────────────────────────
     with st.expander("📋 Detalhamento por Campanha", expanded=False):
         render_tabela_campanhas(metricas)
 
-    st.divider()
+    st.markdown('<hr style="border-color:rgba(59,130,246,0.1);margin:20px 0;">', unsafe_allow_html=True)
 
-    # ── 8. Diagnóstico por IA ───────────────────────────────────
-    st.subheader("🤖 Diagnóstico Executivo por IA")
-    st.caption("Análise gerada pelo Gemini 2.0 Flash atuando como Diretor de Growth")
+    # ── 9. Diagnóstico IA ───────────────────────────────────────
+    st.markdown('<div class="sec-title">🤖 Diagnóstico por IA</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <span style="font-size:0.82rem;color:#64748B;">
+            Análise executiva gerada pelo Gemini 2.0 Flash &nbsp;·&nbsp;
+            Atuando como Diretor de Growth
+        </span>
+        <span style="background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.25);
+                     border-radius:12px;padding:2px 8px;font-size:0.63rem;
+                     font-weight:700;color:#93C5FD;letter-spacing:0.05em;">AI POWERED</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Persiste o diagnóstico no session_state para sobreviver a reruns do Streamlit
     if "diagnostico_txt" not in st.session_state:
         st.session_state.diagnostico_txt = None
 
     if not api_key:
-        st.info(
-            "Configure sua **Gemini API Key** na sidebar para ativar o diagnóstico.  \n"
-            "Obtenha gratuitamente em [aistudio.google.com](https://aistudio.google.com/app/apikey).",
-            icon="🔑",
-        )
+        st.markdown("""
+        <div style="background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.18);
+                    border-radius:10px;padding:14px 18px;font-size:0.83rem;color:#93C5FD;">
+            🔑 Configure sua <strong>Gemini API Key</strong> na sidebar para ativar o diagnóstico.<br>
+            <span style="color:#475569;font-size:0.75rem;">
+                Obtenha gratuitamente em <strong>aistudio.google.com</strong>
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
     else:
         col_btn, _ = st.columns([1, 3])
-        gerar_btn = col_btn.button(
-            "⚡ Gerar Diagnóstico", type="primary", use_container_width=True
-        )
+        gerar_btn = col_btn.button("⚡ Gerar Diagnóstico", type="primary", use_container_width=True)
 
         if gerar_btn:
-            with st.spinner("🧠 Gemini analisando suas campanhas… isso leva alguns segundos"):
+            with st.spinner("🧠 Gemini analisando campanhas…"):
                 st.session_state.diagnostico_txt = gerar_diagnostico_ia(metricas, api_key)
 
         if st.session_state.diagnostico_txt:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(st.session_state.diagnostico_txt)
 
-            # Botão para exportar o relatório como .txt
             st.download_button(
                 label="⬇️ Exportar Relatório (.txt)",
                 data=st.session_state.diagnostico_txt,
@@ -872,12 +1110,18 @@ def main() -> None:
                 mime="text/plain",
             )
 
-    # ── 9. Rodapé ───────────────────────────────────────────────
-    st.divider()
-    st.caption(
-        "🚀 **AdPerform AI** | Dashboard de Performance &nbsp;·&nbsp; "
-        "Desenvolvido com Streamlit · Pandas · Plotly · Gemini AI"
-    )
+    # ── 10. Rodapé ──────────────────────────────────────────────
+    st.markdown("""
+    <div style="border-top:1px solid rgba(59,130,246,0.1);padding-top:16px;margin-top:20px;
+                display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <span style="font-size:0.72rem;color:#334155;font-weight:600;">
+            🚀 AdPerform AI · Dashboard de Performance
+        </span>
+        <span style="font-size:0.68rem;color:#1E293B;">
+            Streamlit · Pandas · Plotly · Gemini AI
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # =============================================================
