@@ -246,7 +246,7 @@ hr { border-color: var(--navy-border) !important; }
 
 def gerar_dados_simulados() -> pd.DataFrame:
     """
-    Cria um DataFrame com 30 dias de dados realistas de campanhas de tráfego pago.
+    Cria um DataFrame com 60 dias de dados realistas de campanhas de tráfego pago.
     Usado como fallback quando nenhuma planilha está conectada.
 
     Colunas geradas:
@@ -305,8 +305,8 @@ def gerar_dados_simulados() -> pd.DataFrame:
     registros = []
     hoje = datetime.now()
 
-    for i in range(30):
-        data = hoje - timedelta(days=29 - i)
+    for i in range(60):
+        data = hoje - timedelta(days=59 - i)
         eh_fds = data.weekday() >= 5  # sábado ou domingo
 
         for camp in campanhas_config:
@@ -992,19 +992,51 @@ def render_header(fonte: str, data_ini: str, data_fim: str, api_key: str) -> Non
     """, unsafe_allow_html=True)
 
 
-def render_kpis_cards(metricas: dict) -> None:
-    """Renderiza 5 KPI cards customizados com hover effect e barra azul no topo."""
+def render_kpis_cards(metricas: dict, deltas: dict = {}) -> None:
+    """
+    Renderiza 5 KPI cards com hover effect, barra gradiente no topo
+    e comparativo vs período anterior (quando deltas disponíveis).
+
+    Regra de cor dos deltas:
+      ROAS, CTR, Conv Rate → positivo = verde (melhorou)
+      CPA, CPC             → negativo = verde (custo caiu = bom)
+    """
     roas    = metricas["roas"]
     ok_roas = roas >= 3.0
 
+    def fmt_delta(key: str, inverso: bool = False) -> tuple[str, str]:
+        """Formata o delta e retorna (texto, classe CSS)."""
+        val = deltas.get(key)
+        if val is None:
+            return "— sem histórico", "kpi-delta-neu"
+        bom = (val < 0) if inverso else (val > 0)
+        sinal = "▲" if val > 0 else "▼"
+        cls   = "kpi-delta-pos" if bom else "kpi-delta-neg"
+        return f"{sinal} {abs(val):.1f}% vs período ant.", cls
+
+    # Se não tiver deltas, usa texto descritivo padrão
+    if deltas:
+        d_roas_txt,  d_roas_cls  = fmt_delta("roas")
+        d_cpa_txt,   d_cpa_cls   = fmt_delta("cpa",  inverso=True)
+        d_cpc_txt,   d_cpc_cls   = fmt_delta("cpc",  inverso=True)
+        d_ctr_txt,   d_ctr_cls   = fmt_delta("ctr")
+        d_conv_txt,  d_conv_cls  = fmt_delta("taxa_conversao")
+    else:
+        d_roas_txt  = "✅ Acima da meta" if ok_roas else "⚠️ Abaixo da meta (3×)"
+        d_roas_cls  = "kpi-delta-pos" if ok_roas else "kpi-delta-neg"
+        d_cpa_txt   = d_cpc_txt = d_ctr_txt = d_conv_txt = "Custo/Aquisição Custo/Clique Click-Through Taxa Conv.".split()[0]
+        d_cpa_cls   = d_cpc_cls = d_ctr_cls = d_conv_cls = "kpi-delta-neu"
+        d_cpa_txt   = "Custo por Aquisição"
+        d_cpc_txt   = "Custo por Clique"
+        d_ctr_txt   = "Click-Through Rate"
+        d_conv_txt  = "Taxa de Conversão"
+
     kpis = [
-        ("ROAS",           f"{roas:.2f}×",
-         "kpi-delta-pos" if ok_roas else "kpi-delta-neg",
-         "✅ Acima da meta (3×)" if ok_roas else "⚠️ Abaixo da meta (3×)"),
-        ("CPA",            f"R$ {metricas['cpa']:,.2f}",   "kpi-delta-neu", "Custo por Aquisição"),
-        ("CPC",            f"R$ {metricas['cpc']:,.2f}",   "kpi-delta-neu", "Custo por Clique"),
-        ("CTR",            f"{metricas['ctr']:.2f}%",      "kpi-delta-neu", "Click-Through Rate"),
-        ("CONV. RATE",     f"{metricas['taxa_conversao']:.2f}%", "kpi-delta-neu", "Taxa de Conversão"),
+        ("ROAS",       f"{roas:.2f}×",                      d_roas_cls,  d_roas_txt),
+        ("CPA",        f"R$ {metricas['cpa']:,.2f}",        d_cpa_cls,   d_cpa_txt),
+        ("CPC",        f"R$ {metricas['cpc']:,.2f}",        d_cpc_cls,   d_cpc_txt),
+        ("CTR",        f"{metricas['ctr']:.2f}%",           d_ctr_cls,   d_ctr_txt),
+        ("CONV. RATE", f"{metricas['taxa_conversao']:.2f}%",d_conv_cls,  d_conv_txt),
     ]
 
     cols = st.columns(5)
@@ -1096,6 +1128,310 @@ def render_tabela_campanhas(metricas: dict) -> None:
 # 🎬 MAIN — Orquestra o app completo
 # =============================================================
 
+
+# =============================================================
+# 🔎 MÓDULO 6 — FILTROS
+# =============================================================
+
+def render_filtros(df: pd.DataFrame) -> tuple[int, list, list]:
+    """
+    Renderiza controles de filtro e retorna (periodo_dias, canais, campanhas).
+    Aparece logo abaixo do header — linha de controles compacta.
+    """
+    canais_disponiveis    = sorted(df["canal"].unique().tolist())
+    campanhas_disponiveis = sorted(df["campanha"].unique().tolist())
+
+    st.markdown('<div class="sec-title">🔎 Filtros</div>', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1, 2])
+
+    with col1:
+        periodo_opcao = st.radio(
+            "Período de análise",
+            ["7 dias", "14 dias", "30 dias"],
+            index=2,
+            horizontal=True,
+            help="Define o período atual. O período anterior equivalente é calculado automaticamente para o comparativo.",
+        )
+        periodo_dias = int(periodo_opcao.split()[0])
+
+    with col2:
+        canais_sel = st.multiselect(
+            "Canal",
+            canais_disponiveis,
+            default=[],
+            placeholder="Todos os canais",
+        )
+
+    with col3:
+        campanhas_sel = st.multiselect(
+            "Campanha",
+            campanhas_disponiveis,
+            default=[],
+            placeholder="Todas as campanhas",
+        )
+
+    st.markdown('<hr style="border-color:rgba(59,130,246,0.08);margin:8px 0 16px;">', unsafe_allow_html=True)
+    return periodo_dias, canais_sel, campanhas_sel
+
+
+def aplicar_filtros(df: pd.DataFrame, periodo_dias: int,
+                    canais: list, campanhas: list) -> pd.DataFrame:
+    """
+    Filtra o DataFrame pelo período, canais e campanhas selecionados.
+    Sempre usa os dias mais recentes como período atual.
+    """
+    data_fim = df["data"].max()
+    data_ini = data_fim - timedelta(days=periodo_dias - 1)
+    df_f = df[df["data"] >= data_ini].copy()
+
+    if canais:
+        df_f = df_f[df_f["canal"].isin(canais)]
+    if campanhas:
+        df_f = df_f[df_f["campanha"].isin(campanhas)]
+
+    return df_f
+
+
+def calcular_periodo_anterior(df: pd.DataFrame, periodo_dias: int,
+                               canais: list, campanhas: list) -> Optional[dict]:
+    """
+    Calcula métricas do período imediatamente anterior ao atual.
+    Retorna None se não houver dados suficientes.
+    """
+    data_fim        = df["data"].max()
+    data_ini_atual  = data_fim - timedelta(days=periodo_dias - 1)
+    data_fim_ant    = data_ini_atual - timedelta(days=1)
+    data_ini_ant    = data_fim_ant - timedelta(days=periodo_dias - 1)
+
+    df_ant = df[(df["data"] >= data_ini_ant) & (df["data"] <= data_fim_ant)].copy()
+    if canais:
+        df_ant = df_ant[df_ant["canal"].isin(canais)]
+    if campanhas:
+        df_ant = df_ant[df_ant["campanha"].isin(campanhas)]
+
+    if df_ant.empty:
+        return None
+
+    return calcular_metricas(df_ant)
+
+
+def calcular_deltas(atual: dict, anterior: Optional[dict]) -> dict:
+    """
+    Calcula variações percentuais entre período atual e anterior.
+    Retorna dict vazio se anterior for None.
+
+    Sinal do delta:
+      ROAS, CTR, Taxa Conv → positivo é bom (verde)
+      CPA, CPC              → negativo é bom (verde — custo caiu)
+    """
+    if anterior is None:
+        return {}
+
+    deltas = {}
+    for key in ["roas", "cpa", "cpc", "ctr", "taxa_conversao",
+                "investimento_total", "receita_total", "lucro_liquido"]:
+        val_a = atual.get(key, 0) or 0
+        val_p = anterior.get(key, 0) or 0
+        if val_p != 0:
+            deltas[key] = round(((val_a - val_p) / abs(val_p)) * 100, 1)
+        else:
+            deltas[key] = None
+    return deltas
+
+
+# =============================================================
+# 🚨 MÓDULO 7 — ALERTAS AUTOMÁTICOS
+# =============================================================
+
+def render_alertas(metricas: dict) -> None:
+    """
+    Exibe banners de alerta automáticos baseados em thresholds de KPIs.
+    Crítico (vermelho): requer ação imediata.
+    Atenção (amarelo):  monitorar de perto.
+    """
+    alertas: list[tuple[str, str, str]] = []
+
+    roas = metricas["roas"]
+    ctr  = metricas["ctr"]
+    tconv = metricas["taxa_conversao"]
+
+    # ── Nível de conta ────────────────────────────────────────
+    if roas < 2.0:
+        alertas.append(("🔴 CRÍTICO",
+            f"ROAS consolidado em {roas:.2f}× — abaixo do mínimo aceitável (2×). "
+            "Pausar campanhas deficitárias imediatamente.", "red"))
+    elif roas < 3.0:
+        alertas.append(("🟡 ATENÇÃO",
+            f"ROAS em {roas:.2f}× — abaixo da meta de 3×. "
+            "Redistribuir budget para campanhas mais eficientes.", "yellow"))
+
+    if ctr < 1.0:
+        alertas.append(("🟡 ATENÇÃO",
+            f"CTR médio de {ctr:.2f}% — muito baixo. "
+            "Testar novos criativos e revisar segmentações.", "yellow"))
+
+    if tconv < 1.5:
+        alertas.append(("🟡 ATENÇÃO",
+            f"Taxa de conversão de {tconv:.2f}% — abaixo do esperado. "
+            "Revisar landing pages e ofertas das campanhas.", "yellow"))
+
+    # ── Nível de campanha ─────────────────────────────────────
+    for _, row in metricas["por_campanha"].iterrows():
+        if pd.notna(row["roas"]) and row["roas"] < 1.5:
+            alertas.append(("🔴 CRÍTICO",
+                f"Campanha '{row['campanha']}' com ROAS de {row['roas']:.2f}× — "
+                "está queimando budget sem retorno. Pausar ou reestruturar.", "red"))
+
+    if not alertas:
+        return  # tudo dentro do esperado — não exibe nada
+
+    st.markdown('<div class="sec-title">🚨 Alertas Automáticos</div>', unsafe_allow_html=True)
+    for nivel, msg, cor in alertas:
+        bg     = "rgba(239,68,68,0.08)"  if cor == "red" else "rgba(245,158,11,0.08)"
+        border = "rgba(239,68,68,0.28)"  if cor == "red" else "rgba(245,158,11,0.28)"
+        color  = "#FCA5A5"               if cor == "red" else "#FCD34D"
+        st.markdown(f"""
+        <div style="background:{bg};border:1px solid {border};border-radius:10px;
+                    padding:11px 16px;margin-bottom:8px;font-size:0.82rem;color:{color};
+                    display:flex;align-items:flex-start;gap:10px;">
+            <span style="font-weight:700;white-space:nowrap;">{nivel}</span>
+            <span>{msg}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+
+# =============================================================
+# 📄 MÓDULO 8 — EXPORTAÇÃO PDF
+# =============================================================
+
+def gerar_pdf(metricas: dict, diagnostico_txt: str,
+              periodo_label: str, fonte: str) -> bytes:
+    """
+    Gera um relatório PDF profissional com KPIs, tabela de campanhas
+    e diagnóstico da IA.
+
+    Usa fpdf2 — sem dependências de sistema (compatível com Streamlit Cloud).
+    Emojis e caracteres não-Latin são removidos automaticamente.
+    """
+    import re
+    from fpdf import FPDF
+
+    def limpar(texto: str) -> str:
+        """Remove emojis, markdown e caracteres especiais para o PDF."""
+        texto = re.sub(r"[^\x00-\xFF]", "", texto)          # remove emojis / unicode fora Latin-1
+        texto = re.sub(r"[#*`_>~]", "", texto)                # remove markdown
+        texto = re.sub(r"\n{3,}", "\n\n", texto)           # colapsa linhas em branco extras
+        texto = texto.replace("×", "x").replace("→", "->")
+        return texto.strip()
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # ── Cabeçalho ────────────────────────────────────────────
+    pdf.set_fill_color(8, 14, 28)
+    pdf.rect(0, 0, 210, 42, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_xy(12, 10)
+    pdf.cell(0, 10, "AdPerform AI", ln=True)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(12, 23)
+    pdf.cell(0, 6, f"Relatorio de Performance | {periodo_label} | {fonte}", ln=True)
+    pdf.set_xy(12, 31)
+    pdf.set_text_color(100, 150, 220)
+    pdf.cell(0, 6, f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
+
+    # ── KPIs ──────────────────────────────────────────────────
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_xy(10, 52)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "KPIs do Periodo", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+
+    kpis_pdf = [
+        ("ROAS",              f"{metricas['roas']:.2f}x"),
+        ("CPA (Custo/Conv.)", f"R$ {metricas['cpa']:,.2f}"),
+        ("CPC (Custo/Clique)",f"R$ {metricas['cpc']:,.2f}"),
+        ("CTR",               f"{metricas['ctr']:.2f}%"),
+        ("Taxa de Conversao", f"{metricas['taxa_conversao']:.2f}%"),
+        ("Investimento Total", f"R$ {metricas['investimento_total']:,.2f}"),
+        ("Receita Total",     f"R$ {metricas['receita_total']:,.2f}"),
+        ("Lucro Liquido",     f"R$ {metricas['lucro_liquido']:,.2f}"),
+        ("Total Conversoes",  f"{metricas['total_conversoes']:,}"),
+        ("Total Cliques",     f"{metricas['total_cliques']:,}"),
+    ]
+
+    fill = False
+    for label, value in kpis_pdf:
+        if fill:
+            pdf.set_fill_color(240, 244, 255)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(90, 7, label, border=0, fill=fill)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(90, 7, value, border=0, fill=fill, ln=True)
+        fill = not fill
+
+    # ── Tabela de Campanhas ───────────────────────────────────
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "Performance por Campanha", ln=True)
+
+    headers = ["Campanha", "Canal", "Invest.", "Receita", "Conv.", "ROAS", "CPA"]
+    widths  = [60, 28, 22, 22, 14, 18, 20]
+    pdf.set_fill_color(8, 14, 28)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 8)
+    for h, w in zip(headers, widths):
+        pdf.cell(w, 7, h, border=0, fill=True)
+    pdf.ln()
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 8)
+    fill = False
+    for _, row in metricas["por_campanha"].sort_values("roas", ascending=False).iterrows():
+        if fill:
+            pdf.set_fill_color(240, 244, 255)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        cpa_val = f"R$ {row['cpa']:,.2f}" if pd.notna(row["cpa"]) else "N/A"
+        vals = [
+            str(row["campanha"])[:30],
+            str(row["canal"]),
+            f"R$ {row['investimento']:,.0f}",
+            f"R$ {row['receita']:,.0f}",
+            str(int(row["conversoes"])),
+            f"{row['roas']:.2f}x",
+            cpa_val,
+        ]
+        for v, w in zip(vals, widths):
+            pdf.cell(w, 6, v, border=0, fill=True)
+        pdf.ln()
+        fill = not fill
+
+    # ── Diagnóstico da IA ─────────────────────────────────────
+    if diagnostico_txt:
+        pdf.ln(6)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 8, "Diagnostico Executivo por IA", ln=True)
+        pdf.set_font("Helvetica", "", 9)
+        texto_limpo = limpar(diagnostico_txt)
+        pdf.multi_cell(0, 5.5, texto_limpo)
+
+    # ── Rodapé ───────────────────────────────────────────────
+    pdf.set_y(-15)
+    pdf.set_font("Helvetica", "I", 7)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 8,
+        f"AdPerform AI | Relatorio gerado automaticamente | {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        align="C"
+    )
+
+    return bytes(pdf.output())
+
+
 def main() -> None:
     # ── 1. Sidebar ─────────────────────────────────────────────
     url_planilha, arquivo_upload, api_key, groq_key = render_sidebar()
@@ -1132,38 +1468,53 @@ def main() -> None:
     # ── 3. Header ──────────────────────────────────────────────
     render_header(fonte, data_ini, data_fim, api_key)
 
-    # Tag de fonte de dados
     st.markdown(f"""
     <div class="source-tag">
         {fonte} &nbsp;·&nbsp; {data_ini} → {data_fim} &nbsp;·&nbsp; {len(df):,} registros
     </div>
     """, unsafe_allow_html=True)
 
-    # ── 4. Métricas ─────────────────────────────────────────────
-    metricas = calcular_metricas(df)
+    # ── 4. Filtros ──────────────────────────────────────────────
+    periodo_dias, canais_sel, campanhas_sel = render_filtros(df)
 
-    # ── 5. KPI Cards ────────────────────────────────────────────
-    st.markdown('<div class="sec-title">📊 KPIs do Período</div>', unsafe_allow_html=True)
-    render_kpis_cards(metricas)
+    # Aplica filtros no período atual
+    df_atual = aplicar_filtros(df, periodo_dias, canais_sel, campanhas_sel)
+    if df_atual.empty:
+        st.warning("Nenhum dado encontrado com os filtros selecionados. Ajuste os filtros.")
+        st.stop()
+
+    # ── 5. Métricas + Comparativo ───────────────────────────────
+    metricas         = calcular_metricas(df_atual)
+    metricas_ant     = calcular_periodo_anterior(df, periodo_dias, canais_sel, campanhas_sel)
+    deltas           = calcular_deltas(metricas, metricas_ant)
+    periodo_label    = f"Últimos {periodo_dias} dias"
+
+    # ── 6. Alertas Automáticos ──────────────────────────────────
+    render_alertas(metricas)
+
+    # ── 7. KPI Cards com comparativo ───────────────────────────
+    cmp_txt = f" vs {periodo_dias} dias anteriores" if metricas_ant else ""
+    st.markdown(f'<div class="sec-title">📊 KPIs — {periodo_label}{cmp_txt}</div>', unsafe_allow_html=True)
+    render_kpis_cards(metricas, deltas)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── 6. Resumo Financeiro ────────────────────────────────────
+    # ── 8. Resumo Financeiro ────────────────────────────────────
     st.markdown('<div class="sec-title">💰 Resumo Financeiro</div>', unsafe_allow_html=True)
     render_resumo_financeiro(metricas)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<hr style="border-color:rgba(59,130,246,0.1);margin:4px 0 20px;">', unsafe_allow_html=True)
 
-    # ── 7. Gráficos ─────────────────────────────────────────────
+    # ── 9. Gráficos ─────────────────────────────────────────────
     st.markdown('<div class="sec-title">📈 Análise Visual</div>', unsafe_allow_html=True)
     col_g1, col_g2 = st.columns([3, 2], gap="medium")
     with col_g1:
-        st.plotly_chart(grafico_investimento_receita(df), use_container_width=True)
+        st.plotly_chart(grafico_investimento_receita(df_atual), use_container_width=True)
     with col_g2:
         st.plotly_chart(grafico_roas_campanhas(metricas), use_container_width=True)
 
-    # ── 8. Tabela detalhada ─────────────────────────────────────
+    # ── 10. Tabela detalhada ────────────────────────────────────
     with st.expander("📋 Detalhamento por Campanha", expanded=False):
         render_tabela_campanhas(metricas)
 
@@ -1211,12 +1562,31 @@ def main() -> None:
             with st.chat_message("assistant", avatar="🤖"):
                 st.markdown(st.session_state.diagnostico_txt)
 
-            st.download_button(
-                label="⬇️ Exportar Relatório (.txt)",
+            col_dl1, col_dl2, _ = st.columns([1, 1, 2])
+            col_dl1.download_button(
+                label="⬇️ Exportar (.txt)",
                 data=st.session_state.diagnostico_txt,
                 file_name=f"diagnostico_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                 mime="text/plain",
+                use_container_width=True,
             )
+            try:
+                pdf_bytes = gerar_pdf(
+                    metricas,
+                    st.session_state.diagnostico_txt,
+                    periodo_label,
+                    fonte,
+                )
+                col_dl2.download_button(
+                    label="📄 Exportar PDF",
+                    data=pdf_bytes,
+                    file_name=f"relatorio_adperform_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                )
+            except Exception as pdf_err:
+                col_dl2.caption(f"PDF indisponível: {pdf_err}")
 
     # ── 10. Rodapé ──────────────────────────────────────────────
     st.markdown("""
