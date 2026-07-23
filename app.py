@@ -590,32 +590,8 @@ estratégia de lance baseado no CTR/taxa de conversão atual]
 """
 
 
-def gerar_diagnostico_ia(metricas: dict, api_key: str) -> str:
-    """
-    Chama a API do Gemini com os dados de performance e retorna
-    um diagnóstico executivo em Markdown.
-
-    Args:
-        metricas (dict): KPIs calculados por calcular_metricas()
-        api_key  (str):  Chave da API do Google AI Studio
-
-    Returns:
-        str: Relatório em Markdown ou mensagem de erro
-    """
-    import google.generativeai as genai  # import lazy para evitar erro sem lib
-
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",          # rápido e eficiente para análise
-        system_instruction=_SYSTEM_PROMPT,
-        generation_config=genai.GenerationConfig(
-            temperature=0.35,          # mais focado; menos "criativo" para análise
-            max_output_tokens=1024,
-        ),
-    )
-
-    # Serializa tabela de campanhas para o prompt
+def _build_prompt(metricas: dict) -> str:
+    """Monta o prompt com os dados de performance — compartilhado entre Gemini e Groq."""
     df_camp = (
         metricas["por_campanha"][[
             "campanha", "canal", "investimento", "receita",
@@ -625,7 +601,7 @@ def gerar_diagnostico_ia(metricas: dict, api_key: str) -> str:
     )
     tabela_str = df_camp.to_string(index=False, float_format="{:.2f}".format)
 
-    prompt_usuario = f"""
+    return f"""
 Analise os dados de performance de mídia paga dos últimos 30 dias e gere o \
 relatório diagnóstico:
 
@@ -647,16 +623,105 @@ relatório diagnóstico:
 Gere o relatório agora.
 """
 
-    try:
-        response = model.generate_content(prompt_usuario)
-        return response.text
-    except Exception as exc:
-        msg = str(exc).lower()
-        if "api_key" in msg or "invalid" in msg or "permission" in msg:
-            return "❌ **API Key inválida ou sem permissão.** Verifique a chave no Google AI Studio."
-        if "quota" in msg or "limit" in msg:
-            return "⚠️ **Cota da API atingida.** Aguarde alguns minutos e tente novamente."
-        return f"❌ **Erro inesperado na API do Gemini:**\n```\n{exc}\n```"
+
+def _chamar_gemini(prompt: str, api_key: str) -> str:
+    """Chama a API do Google Gemini. Lança exceção em caso de erro."""
+    import google.generativeai as genai
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        system_instruction=_SYSTEM_PROMPT,
+        generation_config=genai.GenerationConfig(
+            temperature=0.35,
+            max_output_tokens=1024,
+        ),
+    )
+    response = model.generate_content(prompt)
+    return response.text
+
+
+def _chamar_groq(prompt: str, groq_key: str) -> str:
+    """
+    Chama a API do Groq usando Llama 3.3 70B como fallback gratuito.
+    Groq oferece 14.400 requisições/dia no plano free — muito mais generoso que o Gemini.
+    """
+    from groq import Groq
+
+    client = Groq(api_key=groq_key)
+    response = client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user",   "content": prompt},
+        ],
+        model="llama-3.3-70b-versatile",
+        temperature=0.35,
+        max_tokens=1024,
+    )
+    return response.choices[0].message.content
+
+
+def gerar_diagnostico_ia(metricas: dict, gemini_key: str, groq_key: str = "") -> str:
+    """
+    Orquestra o diagnóstico com fallback automático:
+      1. Tenta Gemini (mais avançado)
+      2. Se cota atingida (429) → cai para Groq automaticamente
+      3. Se nenhuma key disponível → instrução ao usuário
+
+    Args:
+        metricas   (dict): KPIs calculados por calcular_metricas()
+        gemini_key (str):  Chave da API do Google AI Studio (pode ser vazia)
+        groq_key   (str):  Chave da API do Groq (pode ser vazia)
+
+    Returns:
+        str: Relatório em Markdown, com indicação de qual modelo foi usado
+    """
+    prompt = _build_prompt(metricas)
+
+    # ── Tenta Gemini ──────────────────────────────────────────
+    if gemini_key:
+        try:
+            resultado = _chamar_gemini(prompt, gemini_key)
+            return f"*Análise gerada por **Gemini 2.0 Flash** (Google AI)*\n\n---\n\n{resultado}"
+        except Exception as exc:
+            msg = str(exc).lower()
+            eh_cota = any(k in msg for k in ["429", "quota", "limit", "resource_exhausted", "toomanyrequests"])
+            eh_key  = any(k in msg for k in ["api_key", "invalid", "permission", "unauthenticated"])
+
+            if eh_key:
+                return "❌ **Gemini: API Key inválida.** Verifique a chave no Google AI Studio."
+
+            if eh_cota and groq_key:
+                # ── Fallback automático para Groq ──────────────
+                st.toast("⚠️ Gemini com limite atingido — usando Groq como fallback!", icon="🔄")
+                try:
+                    resultado = _chamar_groq(prompt, groq_key)
+                    return (
+                        f"*Análise gerada por **Llama 3.3 70B via Groq** "
+                        f"(fallback automático — Gemini com cota atingida)*\n\n---\n\n{resultado}"
+                    )
+                except Exception as groq_exc:
+                    return f"❌ **Ambas as APIs falharam.**\n- Gemini: `{exc}`\n- Groq: `{groq_exc}`"
+
+            if eh_cota:
+                return (
+                    "⚠️ **Cota do Gemini atingida.**\n\n"
+                    "Configure uma **GROQ_API_KEY** nos Secrets do Streamlit Cloud para "
+                    "ativar o fallback automático gratuito (14.400 req/dia).\n\n"
+                    "> Acesse **console.groq.com** → API Keys → Create API Key"
+                )
+
+            return f"❌ **Erro inesperado no Gemini:**\n```\n{exc}\n```"
+
+    # ── Usa Groq diretamente se não tiver Gemini ──────────────
+    if groq_key:
+        try:
+            resultado = _chamar_groq(prompt, groq_key)
+            return f"*Análise gerada por **Llama 3.3 70B via Groq***\n\n---\n\n{resultado}"
+        except Exception as exc:
+            return f"❌ **Erro no Groq:** `{exc}`"
+
+    return "❌ Configure pelo menos uma API Key (Gemini ou Groq) na sidebar."
 
 
 # =============================================================
@@ -854,16 +919,56 @@ def render_sidebar() -> tuple[str, object, str]:
                 </div>
                 """, unsafe_allow_html=True)
 
+        # ── Groq API Key (fallback gratuito) ────────────────────
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="font-size:0.70rem;color:#64748B;font-weight:600;
+                    letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;">
+            🦙 Groq AI · Fallback Gratuito
+        </div>
+        <div style="font-size:0.68rem;color:#475569;margin-bottom:8px;">
+            Ativa automaticamente se o Gemini atingir o limite.
+            <a href="https://console.groq.com" target="_blank"
+               style="color:#3B82F6;">Obter chave grátis →</a>
+        </div>
+        """, unsafe_allow_html=True)
+
+        groq_key = ""
+        try:
+            groq_key = st.secrets["GROQ_API_KEY"]
+            st.markdown("""
+            <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);
+                        border-radius:8px;padding:8px 12px;font-size:0.75rem;color:#6EE7B7;
+                        display:flex;align-items:center;gap:6px;">
+                🦙 Groq Key ativa — fallback pronto
+            </div>
+            """, unsafe_allow_html=True)
+        except (KeyError, FileNotFoundError):
+            groq_key = st.text_input(
+                "Groq API Key",
+                type="password",
+                placeholder="gsk_...",
+                label_visibility="collapsed",
+                help="Obtenha gratuitamente em: console.groq.com",
+            )
+            if groq_key:
+                st.markdown("""
+                <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);
+                            border-radius:8px;padding:8px 12px;font-size:0.73rem;color:#6EE7B7;">
+                    🦙 Groq configurado — fallback ativo
+                </div>
+                """, unsafe_allow_html=True)
+
         # ── Rodapé ───────────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
         <div style="border-top:1px solid rgba(59,130,246,0.1);padding-top:12px;">
-            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v1.2.0 · AdPerform AI</div>
-            <div style="font-size:0.63rem;color:#1E293B;margin-top:3px;">Gemini 2.0 Flash · Streamlit</div>
+            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v1.3.0 · AdPerform AI</div>
+            <div style="font-size:0.63rem;color:#1E293B;margin-top:3px;">Gemini + Groq · Streamlit</div>
         </div>
         """, unsafe_allow_html=True)
 
-    return url_planilha, arquivo_upload, api_key
+    return url_planilha, arquivo_upload, api_key, groq_key
 
 
 def render_header(fonte: str, data_ini: str, data_fim: str, api_key: str) -> None:
@@ -993,7 +1098,7 @@ def render_tabela_campanhas(metricas: dict) -> None:
 
 def main() -> None:
     # ── 1. Sidebar ─────────────────────────────────────────────
-    url_planilha, arquivo_upload, api_key = render_sidebar()
+    url_planilha, arquivo_upload, api_key, groq_key = render_sidebar()
 
     # ── 2. Carregamento de dados (Prioridade: Upload > Sheets > Simulados) ──
     df: Optional[pd.DataFrame] = None
@@ -1081,13 +1186,15 @@ def main() -> None:
     if "diagnostico_txt" not in st.session_state:
         st.session_state.diagnostico_txt = None
 
-    if not api_key:
+    tem_alguma_key = bool(api_key or groq_key)
+    if not tem_alguma_key:
         st.markdown("""
         <div style="background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.18);
                     border-radius:10px;padding:14px 18px;font-size:0.83rem;color:#93C5FD;">
-            🔑 Configure sua <strong>Gemini API Key</strong> na sidebar para ativar o diagnóstico.<br>
+            🔑 Configure uma API Key na sidebar para ativar o diagnóstico.<br>
             <span style="color:#475569;font-size:0.75rem;">
-                Obtenha gratuitamente em <strong>aistudio.google.com</strong>
+                <strong>Gemini:</strong> aistudio.google.com &nbsp;·&nbsp;
+                <strong>Groq (grátis):</strong> console.groq.com
             </span>
         </div>
         """, unsafe_allow_html=True)
@@ -1096,8 +1203,9 @@ def main() -> None:
         gerar_btn = col_btn.button("⚡ Gerar Diagnóstico", type="primary", use_container_width=True)
 
         if gerar_btn:
-            with st.spinner("🧠 Gemini analisando campanhas…"):
-                st.session_state.diagnostico_txt = gerar_diagnostico_ia(metricas, api_key)
+            provider = "Gemini" if api_key else "Groq"
+            with st.spinner(f"🧠 {provider} analisando campanhas… pode levar alguns segundos"):
+                st.session_state.diagnostico_txt = gerar_diagnostico_ia(metricas, api_key, groq_key)
 
         if st.session_state.diagnostico_txt:
             with st.chat_message("assistant", avatar="🤖"):

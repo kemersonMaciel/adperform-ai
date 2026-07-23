@@ -17,3 +17,6 @@ google-generativeai>=0.7.2
 
 # Leitura e escrita de arquivos Excel (.xlsx)
 openpyxl>=3.1.0
+
+# Fallback gratuito quando Gemini atinge limite de cota
+groq>=0.9.0
