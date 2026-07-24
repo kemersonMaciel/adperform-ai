@@ -1318,12 +1318,23 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
     from fpdf import FPDF
 
     def limpar(texto: str) -> str:
-        """Remove emojis, markdown e caracteres especiais para o PDF."""
-        texto = re.sub(r"[^\x00-\xFF]", "", texto)          # remove emojis / unicode fora Latin-1
-        texto = re.sub(r"[#*`_>~]", "", texto)                # remove markdown
-        texto = re.sub(r"\n{3,}", "\n\n", texto)           # colapsa linhas em branco extras
-        texto = texto.replace("×", "x").replace("→", "->")
+        """
+        Remove TUDO fora do Latin-1 (emojis, Unicode especial) e markdown.
+        Usa encode/decode — método mais confiável que regex para fpdf2 + Helvetica.
+        """
+        if not isinstance(texto, str):
+            texto = str(texto)
+        # encode para Latin-1, ignorando tudo que não suportar (emojis, —, ×, etc.)
+        texto = texto.encode("latin-1", errors="ignore").decode("latin-1")
+        texto = re.sub(r"[#*`_>~]", "", texto)      # remove markdown
+        texto = re.sub(r"\n{3,}", "\n\n", texto)    # colapsa linhas em branco
+        texto = texto.replace("->", "->")           # normaliza seta
         return texto.strip()
+
+    # Limpa TODAS as strings externas antes de entrar no PDF
+    fonte_pdf         = limpar(fonte)
+    periodo_label_pdf = limpar(periodo_label)
+    diagnostico_pdf   = limpar(diagnostico_txt) if diagnostico_txt else ""
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -1338,7 +1349,7 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
     pdf.cell(0, 10, "AdPerform AI", ln=True)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_xy(12, 23)
-    pdf.cell(0, 6, f"Relatorio de Performance | {periodo_label} | {fonte}", ln=True)
+    pdf.cell(0, 6, f"Relatorio de Performance | {periodo_label_pdf} | {fonte_pdf}", ln=True)
     pdf.set_xy(12, 31)
     pdf.set_text_color(100, 150, 220)
     pdf.cell(0, 6, f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
@@ -1397,8 +1408,8 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
             pdf.set_fill_color(255, 255, 255)
         cpa_val = f"R$ {row['cpa']:,.2f}" if pd.notna(row["cpa"]) else "N/A"
         vals = [
-            str(row["campanha"])[:30],
-            str(row["canal"]),
+            limpar(str(row["campanha"]))[:30],
+            limpar(str(row["canal"])),
             f"R$ {row['investimento']:,.0f}",
             f"R$ {row['receita']:,.0f}",
             str(int(row["conversoes"])),
@@ -1417,8 +1428,7 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
         pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 8, "Diagnostico Executivo por IA", ln=True)
         pdf.set_font("Helvetica", "", 9)
-        texto_limpo = limpar(diagnostico_txt)
-        pdf.multi_cell(0, 5.5, texto_limpo)
+        pdf.multi_cell(0, 5.5, diagnostico_pdf)
 
     # ── Rodapé ───────────────────────────────────────────────
     pdf.set_y(-15)
