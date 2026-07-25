@@ -971,6 +971,107 @@ def render_sidebar() -> tuple[str, object, str]:
     return url_planilha, arquivo_upload, api_key, groq_key
 
 
+
+
+def grafico_distribuicao_investimento(df: pd.DataFrame, por: str = "canal") -> go.Figure:
+    """
+    Gráfico donut mostrando % do investimento total por canal ou campanha.
+    por = "canal" | "campanha"
+    """
+    df_group = (
+        df.groupby(por)["investimento"]
+        .sum()
+        .reset_index()
+        .sort_values("investimento", ascending=False)
+    )
+
+    cores = ["#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"]
+
+    fig = go.Figure(go.Pie(
+        labels=df_group[por],
+        values=df_group["investimento"],
+        hole=0.65,
+        marker=dict(colors=cores[:len(df_group)],
+                    line=dict(color="#080E1C", width=2)),
+        textinfo="percent",
+        textfont=dict(size=11, color="#F1F5F9"),
+        hovertemplate="<b>%{label}</b><br>R$ %{value:,.2f}<br>%{percent}<extra></extra>",
+    ))
+
+    titulo = "por Canal" if por == "canal" else "por Campanha"
+    fig.update_layout(
+        title=f"🍩 Distribuição de Investimento {titulo}",
+        height=310,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(font=dict(color="#9CA3AF", size=10),
+                    bgcolor="rgba(0,0,0,0)",
+                    orientation="v", x=1.0, y=0.5),
+        margin=dict(l=0, r=10, t=50, b=0),
+        annotations=[dict(
+            text=f"<b>R$<br>{df_group['investimento'].sum()/1000:.1f}k</b>",
+            x=0.5, y=0.5, font=dict(size=14, color="#F1F5F9"),
+            showarrow=False,
+        )],
+    )
+    return fig
+
+
+def grafico_eficiencia_temporal(df: pd.DataFrame) -> go.Figure:
+    """
+    Gráfico de linha dupla: evolução de CPC e CTR ao longo do tempo.
+    Usa eixo Y duplo pois as escalas são muito diferentes.
+    """
+    df_diario = (
+        df.groupby("data")
+        .agg(investimento=("investimento","sum"),
+             cliques=("cliques","sum"),
+             impressoes=("impressoes","sum"))
+        .reset_index()
+        .sort_values("data")
+    )
+    df_diario["cpc"] = (df_diario["investimento"] / df_diario["cliques"].replace(0, pd.NA)).round(2)
+    df_diario["ctr"] = ((df_diario["cliques"] / df_diario["impressoes"].replace(0, pd.NA)) * 100).round(2)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=df_diario["data"], y=df_diario["cpc"],
+        name="CPC (R$)", mode="lines+markers",
+        line=dict(color="#F59E0B", width=2.5),
+        marker=dict(size=4),
+        yaxis="y1",
+        hovertemplate="CPC: R$ %{y:.2f}<extra></extra>",
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df_diario["data"], y=df_diario["ctr"],
+        name="CTR (%)", mode="lines+markers",
+        line=dict(color="#8B5CF6", width=2.5, dash="dot"),
+        marker=dict(size=4),
+        yaxis="y2",
+        hovertemplate="CTR: %{y:.2f}%%<extra></extra>",
+    ))
+
+    fig.update_layout(
+        title="📉 Evolução de CPC e CTR",
+        height=310,
+        hovermode="x unified",
+        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center",
+                    font=dict(color="#9CA3AF")),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=0, r=60, t=55, b=0),
+        yaxis=dict(title="CPC (R$)", tickprefix="R$ ",
+                   gridcolor="rgba(156,163,175,0.15)",
+                   color="#F59E0B"),
+        yaxis2=dict(title="CTR (%)", ticksuffix="%",
+                    overlaying="y", side="right",
+                    gridcolor="rgba(156,163,175,0.08)",
+                    color="#8B5CF6"),
+    )
+    return fig
+
 def render_header(fonte: str, data_ini: str, data_fim: str, api_key: str) -> None:
     """Renderiza o banner de cabeçalho com badges de status."""
     ai_badge = (
@@ -1442,6 +1543,206 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
     return bytes(pdf.output())
 
 
+
+# =============================================================
+# 🏆 MÓDULO 9 — SCORE DE SAÚDE DA CONTA
+# =============================================================
+
+def calcular_health_score(metricas: dict) -> dict:
+    """
+    Calcula o Score de Saúde da Conta (0–100) com base em 4 KPIs ponderados.
+
+    Pesos:
+        ROAS        → 40% (principal indicador de retorno)
+        CTR         → 20% (qualidade do anúncio/segmentação)
+        Conv. Rate  → 20% (qualidade da oferta/landing page)
+        CPA         → 20% (eficiência de custo — inverso)
+
+    Grades: A+ (90-100) · A (80-89) · B+ (70-79) · B (60-69)
+            C (50-59) · D (40-49) · F (<40)
+    """
+    roas  = metricas.get("roas",  0)
+    ctr   = metricas.get("ctr",   0)
+    conv  = metricas.get("taxa_conversao", 0)
+    cpa   = metricas.get("cpa",   999)
+
+    # ── Pontuação individual por KPI ─────────────────────────
+    def score_roas(v):
+        if v >= 6.0: return 100
+        if v >= 4.0: return 85
+        if v >= 3.0: return 70
+        if v >= 2.0: return 50
+        if v >= 1.0: return 30
+        return 10
+
+    def score_ctr(v):
+        if v >= 4.0: return 100
+        if v >= 3.0: return 80
+        if v >= 2.0: return 60
+        if v >= 1.0: return 40
+        return 20
+
+    def score_conv(v):
+        if v >= 5.0: return 100
+        if v >= 3.0: return 80
+        if v >= 2.0: return 60
+        if v >= 1.0: return 40
+        return 20
+
+    def score_cpa(v):   # inverso — CPA menor = melhor
+        if v <= 20:  return 100
+        if v <= 40:  return 80
+        if v <= 70:  return 60
+        if v <= 120: return 40
+        return 20
+
+    breakdown = {
+        "ROAS":            (score_roas(roas),  0.40),
+        "CTR":             (score_ctr(ctr),    0.20),
+        "Conv. Rate":      (score_conv(conv),  0.20),
+        "CPA (eficiência)":(score_cpa(cpa),    0.20),
+    }
+
+    total = round(sum(s * w for s, w in breakdown.values()))
+
+    # ── Grade e cor ───────────────────────────────────────────
+    if total >= 90: grade, cor, label = "A+", "#10B981", "Excelente"
+    elif total >= 80: grade, cor, label = "A",  "#34D399", "Muito Bom"
+    elif total >= 70: grade, cor, label = "B+", "#6EE7B7", "Bom"
+    elif total >= 60: grade, cor, label = "B",  "#FCD34D", "Acima da Média"
+    elif total >= 50: grade, cor, label = "C",  "#FBBF24", "Na Média"
+    elif total >= 40: grade, cor, label = "D",  "#F97316", "Abaixo da Média"
+    else:             grade, cor, label = "F",  "#EF4444", "Crítico"
+
+    return {
+        "score": total, "grade": grade,
+        "cor": cor, "label": label,
+        "breakdown": breakdown,
+    }
+
+
+def render_health_score(score_data: dict) -> None:
+    """
+    Exibe o Score de Saúde como gauge Plotly + breakdown dos componentes.
+    """
+    score = score_data["score"]
+    cor   = score_data["cor"]
+    grade = score_data["grade"]
+    label = score_data["label"]
+
+    # ── Gauge Plotly ──────────────────────────────────────────
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        number=dict(suffix="", font=dict(size=38, color="#F1F5F9")),
+        gauge=dict(
+            axis=dict(range=[0, 100], tickcolor="#475569",
+                      tickfont=dict(color="#475569", size=10)),
+            bar=dict(color=cor, thickness=0.25),
+            bgcolor="rgba(0,0,0,0)",
+            borderwidth=0,
+            steps=[
+                dict(range=[0,  40], color="rgba(239,68,68,0.08)"),
+                dict(range=[40, 70], color="rgba(245,158,11,0.08)"),
+                dict(range=[70,100], color="rgba(16,185,129,0.08)"),
+            ],
+            threshold=dict(line=dict(color=cor, width=3), value=score),
+        ),
+        domain=dict(x=[0,1], y=[0,1]),
+    ))
+
+    fig.update_layout(
+        height=220,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=20, r=20, t=10, b=0),
+        annotations=[dict(
+            text=f"<b>{grade}</b> — {label}",
+            x=0.5, y=0.18, showarrow=False,
+            font=dict(size=13, color=cor),
+        )],
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── Breakdown por KPI ─────────────────────────────────────
+    st.markdown("<div style='margin-top:-10px'>", unsafe_allow_html=True)
+    for kpi, (pts, peso) in score_data["breakdown"].items():
+        pct  = int(pts * peso)
+        fill = "#10B981" if pts >= 70 else "#F59E0B" if pts >= 50 else "#EF4444"
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:0.75rem;">
+            <span style="color:#9CA3AF;width:120px;flex-shrink:0;">{kpi}</span>
+            <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:4px;height:6px;">
+                <div style="width:{pts}%;background:{fill};height:6px;border-radius:4px;"></div>
+            </div>
+            <span style="color:{fill};font-weight:700;width:32px;text-align:right;">{pct}pt</span>
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =============================================================
+# 🕐 MÓDULO 10 — HISTÓRICO DE DIAGNÓSTICOS
+# =============================================================
+
+def salvar_historico(diagnostico_txt: str, metricas: dict,
+                     periodo_label: str) -> None:
+    """
+    Salva o diagnóstico atual no histórico da sessão (máx. 5 entradas).
+    Cada entrada contém timestamp, métricas resumidas e texto completo.
+    """
+    if "historico_diagnosticos" not in st.session_state:
+        st.session_state.historico_diagnosticos = []
+
+    entrada = {
+        "timestamp":  datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "periodo":    periodo_label,
+        "roas":       metricas.get("roas", 0),
+        "cpa":        metricas.get("cpa",  0),
+        "receita":    metricas.get("receita_total", 0),
+        "texto":      diagnostico_txt,
+    }
+
+    # Evita duplicata imediata (mesmo texto)
+    if st.session_state.historico_diagnosticos:
+        if st.session_state.historico_diagnosticos[-1]["texto"] == diagnostico_txt:
+            return
+
+    st.session_state.historico_diagnosticos.append(entrada)
+    # Mantém apenas os 5 mais recentes
+    st.session_state.historico_diagnosticos = (
+        st.session_state.historico_diagnosticos[-5:]
+    )
+
+
+def render_historico_diagnosticos() -> None:
+    """
+    Exibe os últimos 5 diagnósticos gerados na sessão em cards expansíveis.
+    Mostra resumo (ROAS, CPA, Receita) e permite re-visualizar o texto completo.
+    """
+    historico = st.session_state.get("historico_diagnosticos", [])
+    if not historico:
+        return
+
+    st.markdown('<div class="sec-title">🕐 Histórico de Diagnósticos</div>',
+                unsafe_allow_html=True)
+
+    # Exibe do mais recente para o mais antigo
+    for i, entrada in enumerate(reversed(historico)):
+        label = "Mais recente" if i == 0 else f"Diagnóstico anterior #{i}"
+        with st.expander(
+            f"📋 {label} — {entrada['timestamp']} · {entrada['periodo']}",
+            expanded=(i == 0),
+        ):
+            c1, c2, c3 = st.columns(3)
+            c1.metric("ROAS",    f"{entrada['roas']:.2f}×")
+            c2.metric("CPA",     f"R$ {entrada['cpa']:,.2f}")
+            c3.metric("Receita", f"R$ {entrada['receita']:,.0f}")
+            st.markdown("---")
+            st.markdown(entrada["texto"])
+
+
 def main() -> None:
     # ── 1. Sidebar ─────────────────────────────────────────────
     url_planilha, arquivo_upload, api_key, groq_key = render_sidebar()
@@ -1516,21 +1817,37 @@ def main() -> None:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<hr style="border-color:rgba(59,130,246,0.1);margin:4px 0 20px;">', unsafe_allow_html=True)
 
-    # ── 9. Gráficos ─────────────────────────────────────────────
-    st.markdown('<div class="sec-title">📈 Análise Visual</div>', unsafe_allow_html=True)
-    col_g1, col_g2 = st.columns([3, 2], gap="medium")
-    with col_g1:
+    # ── 9. Health Score ─────────────────────────────────────────
+    score_data = calcular_health_score(metricas)
+    st.markdown('<div class="sec-title">🏆 Score de Saúde da Conta</div>', unsafe_allow_html=True)
+    col_score, col_grafprinc = st.columns([1, 3], gap="medium")
+    with col_score:
+        render_health_score(score_data)
+    with col_grafprinc:
         st.plotly_chart(grafico_investimento_receita(df_atual), use_container_width=True)
-    with col_g2:
-        st.plotly_chart(grafico_roas_campanhas(metricas), use_container_width=True)
 
-    # ── 10. Tabela detalhada ────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 10. Gráficos de análise ──────────────────────────────────
+    st.markdown('<div class="sec-title">📈 Análise Visual</div>', unsafe_allow_html=True)
+    col_g1, col_g2, col_g3 = st.columns([2, 2, 2], gap="medium")
+    with col_g1:
+        st.plotly_chart(grafico_roas_campanhas(metricas), use_container_width=True)
+    with col_g2:
+        donut_por = st.radio("Distribuição por:", ["canal", "campanha"],
+                             horizontal=True, label_visibility="collapsed")
+        st.plotly_chart(grafico_distribuicao_investimento(df_atual, por=donut_por),
+                        use_container_width=True)
+    with col_g3:
+        st.plotly_chart(grafico_eficiencia_temporal(df_atual), use_container_width=True)
+
+    # ── 11. Tabela detalhada ────────────────────────────────────
     with st.expander("📋 Detalhamento por Campanha", expanded=False):
         render_tabela_campanhas(metricas)
 
     st.markdown('<hr style="border-color:rgba(59,130,246,0.1);margin:20px 0;">', unsafe_allow_html=True)
 
-    # ── 9. Diagnóstico IA ───────────────────────────────────────
+    # ── 12. Diagnóstico IA ──────────────────────────────────────
     st.markdown('<div class="sec-title">🤖 Diagnóstico por IA</div>', unsafe_allow_html=True)
     st.markdown("""
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
@@ -1567,6 +1884,9 @@ def main() -> None:
             provider = "Gemini" if api_key else "Groq"
             with st.spinner(f"🧠 {provider} analisando campanhas… pode levar alguns segundos"):
                 st.session_state.diagnostico_txt = gerar_diagnostico_ia(metricas, api_key, groq_key)
+            # Salva automaticamente no histórico da sessão
+            if st.session_state.diagnostico_txt:
+                salvar_historico(st.session_state.diagnostico_txt, metricas, periodo_label)
 
         if st.session_state.diagnostico_txt:
             with st.chat_message("assistant", avatar="🤖"):
@@ -1598,7 +1918,10 @@ def main() -> None:
             except Exception as pdf_err:
                 col_dl2.caption(f"PDF indisponível: {pdf_err}")
 
-    # ── 10. Rodapé ──────────────────────────────────────────────
+    # ── 13. Histórico de Diagnósticos ──────────────────────────
+    render_historico_diagnosticos()
+
+    # ── 14. Rodapé ──────────────────────────────────────────────
     st.markdown("""
     <div style="border-top:1px solid rgba(59,130,246,0.1);padding-top:16px;margin-top:20px;
                 display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
