@@ -1961,8 +1961,8 @@ def main() -> None:
     if "filtros_hash" not in st.session_state:
         st.session_state.filtros_hash = filtros_hash
     diagnostico_desatualizado = (
-        st.session_state.diagnostico_txt is not None
-        and st.session_state.filtros_hash != filtros_hash
+        st.session_state.get("diagnostico_txt") is not None
+        and st.session_state.get("filtros_hash") != filtros_hash
     )
 
     # ── 5. Métricas + Comparativo ───────────────────────────────
