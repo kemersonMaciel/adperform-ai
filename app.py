@@ -787,7 +787,7 @@ def grafico_investimento_receita(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def grafico_roas_campanhas(metricas: dict) -> go.Figure:
+def grafico_roas_campanhas(metricas: dict, meta_roas: float = 3.0) -> go.Figure:
     """
     Gráfico de barras horizontais com ROAS por campanha.
     Barras verdes = acima da meta 3×. Barras vermelhas = abaixo.
@@ -837,7 +837,7 @@ def grafico_roas_campanhas(metricas: dict) -> go.Figure:
 #     Sidebar, header, KPI cards, gráficos e diagnóstico de IA
 # =============================================================
 
-def render_sidebar() -> tuple[str, object, str]:
+def render_sidebar() -> tuple:
     """Renderiza sidebar e retorna (url_planilha, arquivo_upload, api_key)."""
     with st.sidebar:
         # ── Logo ─────────────────────────────────────────────────
@@ -959,16 +959,36 @@ def render_sidebar() -> tuple[str, object, str]:
                 </div>
                 """, unsafe_allow_html=True)
 
+        # ── Metas da Conta ───────────────────────────────────────
+        st.divider()
+        st.markdown("""
+        <div style="font-size:0.70rem;color:#64748B;font-weight:600;
+                    letter-spacing:0.06em;text-transform:uppercase;margin-bottom:8px;">
+            🎯 Metas da Conta
+        </div>
+        """, unsafe_allow_html=True)
+
+        meta_roas = st.number_input(
+            "Meta de ROAS",
+            min_value=0.5, max_value=50.0, value=3.0, step=0.5,
+            help="Meta de retorno sobre investimento em anúncios. Padrão de mercado: 3×",
+        )
+        meta_cpa = st.number_input(
+            "Meta de CPA (R$)",
+            min_value=1.0, max_value=5000.0, value=60.0, step=5.0,
+            help="Custo máximo aceitável por aquisição/conversão no seu nicho",
+        )
+
         # ── Rodapé ───────────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
         <div style="border-top:1px solid rgba(59,130,246,0.1);padding-top:12px;">
-            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v1.3.0 · AdPerform AI</div>
+            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v2.0.0 · AdPerform AI</div>
             <div style="font-size:0.63rem;color:#1E293B;margin-top:3px;">Gemini + Groq · Streamlit</div>
         </div>
         """, unsafe_allow_html=True)
 
-    return url_planilha, arquivo_upload, api_key, groq_key
+    return url_planilha, arquivo_upload, api_key, groq_key, meta_roas, meta_cpa
 
 
 
@@ -1093,7 +1113,7 @@ def render_header(fonte: str, data_ini: str, data_fim: str, api_key: str) -> Non
     """, unsafe_allow_html=True)
 
 
-def render_kpis_cards(metricas: dict, deltas: dict = {}) -> None:
+def render_kpis_cards(metricas: dict, deltas: dict = {}, df_completo: object = None, periodo_dias: int = 30) -> None:
     """
     Renderiza 5 KPI cards com hover effect, barra gradiente no topo
     e comparativo vs período anterior (quando deltas disponíveis).
@@ -1105,11 +1125,18 @@ def render_kpis_cards(metricas: dict, deltas: dict = {}) -> None:
     roas    = metricas["roas"]
     ok_roas = roas >= 3.0
 
+    # Calcula quantos dias a mais são necessários para ter comparativo
+    dias_disponiveis = int((df_completo["data"].max() - df_completo["data"].min()).days) + 1 if df_completo is not None else 0
+    precisam = periodo_dias * 2
+
     def fmt_delta(key: str, inverso: bool = False) -> tuple[str, str]:
         """Formata o delta e retorna (texto, classe CSS)."""
         val = deltas.get(key)
         if val is None:
-            return "— sem histórico", "kpi-delta-neu"
+            if dias_disponiveis < precisam:
+                faltam = precisam - dias_disponiveis
+                return f"📅 +{faltam} dias para comparar", "kpi-delta-neu"
+            return "— período ant. sem dados", "kpi-delta-neu"
         bom = (val < 0) if inverso else (val > 0)
         sinal = "▲" if val > 0 else "▼"
         cls   = "kpi-delta-pos" if bom else "kpi-delta-neg"
@@ -1344,7 +1371,7 @@ def calcular_deltas(atual: dict, anterior: Optional[dict]) -> dict:
 # 🚨 MÓDULO 7 — ALERTAS AUTOMÁTICOS
 # =============================================================
 
-def render_alertas(metricas: dict) -> None:
+def render_alertas(metricas: dict, meta_roas: float = 3.0, meta_cpa: float = 60.0) -> None:
     """
     Exibe banners de alerta automáticos baseados em thresholds de KPIs.
     Crítico (vermelho): requer ação imediata.
@@ -1357,13 +1384,14 @@ def render_alertas(metricas: dict) -> None:
     tconv = metricas["taxa_conversao"]
 
     # ── Nível de conta ────────────────────────────────────────
-    if roas < 2.0:
+    roas_minimo = round(meta_roas * 0.67, 2)  # 67% da meta = zona crítica
+    if roas < roas_minimo:
         alertas.append(("🔴 CRÍTICO",
-            f"ROAS consolidado em {roas:.2f}× — abaixo do mínimo aceitável (2×). "
+            f"ROAS consolidado em {roas:.2f}× — abaixo do mínimo aceitável ({roas_minimo:.1f}×). "
             "Pausar campanhas deficitárias imediatamente.", "red"))
-    elif roas < 3.0:
+    elif roas < meta_roas:
         alertas.append(("🟡 ATENÇÃO",
-            f"ROAS em {roas:.2f}× — abaixo da meta de 3×. "
+            f"ROAS em {roas:.2f}× — abaixo da sua meta de {meta_roas:.1f}×. "
             "Redistribuir budget para campanhas mais eficientes.", "yellow"))
 
     if ctr < 1.0:
@@ -1378,10 +1406,15 @@ def render_alertas(metricas: dict) -> None:
 
     # ── Nível de campanha ─────────────────────────────────────
     for _, row in metricas["por_campanha"].iterrows():
-        if pd.notna(row["roas"]) and row["roas"] < 1.5:
+        roas_critico = round(meta_roas * 0.50, 2)
+        if pd.notna(row["roas"]) and row["roas"] < roas_critico:
             alertas.append(("🔴 CRÍTICO",
                 f"Campanha '{row['campanha']}' com ROAS de {row['roas']:.2f}× — "
-                "está queimando budget sem retorno. Pausar ou reestruturar.", "red"))
+                f"abaixo de {roas_critico:.1f}× (50% da sua meta). Pausar ou reestruturar.", "red"))
+        elif pd.notna(row.get('cpa')) and row['cpa'] > meta_cpa * 1.5:
+            alertas.append(("🟡 ATENÇÃO",
+                f"Campanha '{row['campanha']}' com CPA de R$ {row['cpa']:.2f} — "
+                f"{((row['cpa']/meta_cpa)-1)*100:.0f}% acima da sua meta (R$ {meta_cpa:.0f}).", "yellow"))
 
     if not alertas:
         return  # tudo dentro do esperado — não exibe nada
@@ -1548,7 +1581,7 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
 # 🏆 MÓDULO 9 — SCORE DE SAÚDE DA CONTA
 # =============================================================
 
-def calcular_health_score(metricas: dict) -> dict:
+def calcular_health_score(metricas: dict, meta_roas: float = 3.0, meta_cpa: float = 60.0) -> dict:
     """
     Calcula o Score de Saúde da Conta (0–100) com base em 4 KPIs ponderados.
 
@@ -1568,11 +1601,11 @@ def calcular_health_score(metricas: dict) -> dict:
 
     # ── Pontuação individual por KPI ─────────────────────────
     def score_roas(v):
-        if v >= 6.0: return 100
-        if v >= 4.0: return 85
-        if v >= 3.0: return 70
-        if v >= 2.0: return 50
-        if v >= 1.0: return 30
+        if v >= meta_roas * 2.0: return 100
+        if v >= meta_roas * 1.3: return 85
+        if v >= meta_roas:       return 70
+        if v >= meta_roas * 0.7: return 50
+        if v >= meta_roas * 0.4: return 30
         return 10
 
     def score_ctr(v):
@@ -1589,11 +1622,11 @@ def calcular_health_score(metricas: dict) -> dict:
         if v >= 1.0: return 40
         return 20
 
-    def score_cpa(v):   # inverso — CPA menor = melhor
-        if v <= 20:  return 100
-        if v <= 40:  return 80
-        if v <= 70:  return 60
-        if v <= 120: return 40
+    def score_cpa(v):   # inverso — CPA menor = melhor, relativo à meta
+        if v <= meta_cpa * 0.35: return 100
+        if v <= meta_cpa * 0.65: return 80
+        if v <= meta_cpa:        return 60
+        if v <= meta_cpa * 2.0:  return 40
         return 20
 
     breakdown = {
@@ -1743,9 +1776,81 @@ def render_historico_diagnosticos() -> None:
             st.markdown(entrada["texto"])
 
 
+
+@st.dialog("🚀 Bem-vindo ao AdPerform AI", width="large")
+def mostrar_onboarding() -> None:
+    """
+    Modal de boas-vindas exibido no primeiro acesso.
+    Explica o produto em 3 passos e orienta a primeira ação.
+    Dispensado ao clicar em "Começar" — nunca mais aparece na sessão.
+    """
+    st.markdown("""
+    <div style="text-align:center;padding:8px 0 20px;">
+        <div style="font-size:2.5rem;">🚀</div>
+        <div style="font-size:1.1rem;font-weight:700;color:#F1F5F9;margin-top:8px;">
+            Dashboard de Performance com Diagnóstico por IA
+        </div>
+        <div style="font-size:0.85rem;color:#64748B;margin-top:6px;">
+            Para Gestores de Tráfego Pago e Agências de Marketing
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+    for col, icon, titulo, desc in [
+        (c1, "📁", "1. Conecte seus dados",
+         "Faça upload de um **CSV ou Excel** exportado do Google Ads / Meta Ads, "
+         "ou conecte uma planilha Google Sheets pelo link CSV público."),
+        (c2, "📊", "2. Analise os KPIs",
+         "Veja **ROAS, CPA, CPC, CTR** e Taxa de Conversão em tempo real, "
+         "com comparativo do período anterior e alertas automáticos."),
+        (c3, "🤖", "3. Gere o diagnóstico",
+         "A IA atua como **Diretor de Growth** e entrega diagnóstico, "
+         "onde o dinheiro está bem gasto e plano de ação para a semana."),
+    ]:
+        with col:
+            st.markdown(f"""
+            <div style="background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.18);
+                        border-radius:12px;padding:16px;text-align:center;height:100%;">
+                <div style="font-size:2rem;">{icon}</div>
+                <div style="font-size:0.82rem;font-weight:700;color:#93C5FD;margin:8px 0 6px;">{titulo}</div>
+                <div style="font-size:0.75rem;color:#64748B;">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("**📋 Estrutura obrigatória do arquivo (nomes exatos nas colunas):**")
+    st.code("data | campanha | canal | investimento | impressoes | cliques | conversoes | receita",
+            language=None)
+
+    col_dl, col_btn = st.columns([1, 1])
+    with col_dl:
+        try:
+            template = gerar_template_excel()
+            st.download_button(
+                "⬇️ Baixar template Excel",
+                data=template,
+                file_name="template_adperform_ai.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        except Exception:
+            st.caption("Template disponível na sidebar")
+    with col_btn:
+        if st.button("Entendido — Vamos começar! 🚀", type="primary", use_container_width=True):
+            st.session_state.onboarding_visto = True
+            st.rerun()
+
+
 def main() -> None:
+    # ── 0. Onboarding (primeiro acesso) ────────────────────────
+    if "onboarding_visto" not in st.session_state:
+        st.session_state.onboarding_visto = False
+    if not st.session_state.onboarding_visto:
+        mostrar_onboarding()
+
     # ── 1. Sidebar ─────────────────────────────────────────────
-    url_planilha, arquivo_upload, api_key, groq_key = render_sidebar()
+    url_planilha, arquivo_upload, api_key, groq_key, meta_roas, meta_cpa = render_sidebar()
 
     # ── 2. Carregamento de dados (Prioridade: Upload > Sheets > Simulados) ──
     df: Optional[pd.DataFrame] = None
@@ -1794,6 +1899,15 @@ def main() -> None:
         st.warning("Nenhum dado encontrado com os filtros selecionados. Ajuste os filtros.")
         st.stop()
 
+    # Hash dos filtros atuais — detecta se o diagnóstico ficou desatualizado
+    filtros_hash = hash((periodo_dias, tuple(sorted(canais_sel)), tuple(sorted(campanhas_sel))))
+    if "filtros_hash" not in st.session_state:
+        st.session_state.filtros_hash = filtros_hash
+    diagnostico_desatualizado = (
+        st.session_state.diagnostico_txt is not None
+        and st.session_state.filtros_hash != filtros_hash
+    )
+
     # ── 5. Métricas + Comparativo ───────────────────────────────
     metricas         = calcular_metricas(df_atual)
     metricas_ant     = calcular_periodo_anterior(df, periodo_dias, canais_sel, campanhas_sel)
@@ -1801,12 +1915,12 @@ def main() -> None:
     periodo_label    = f"Últimos {periodo_dias} dias"
 
     # ── 6. Alertas Automáticos ──────────────────────────────────
-    render_alertas(metricas)
+    render_alertas(metricas, meta_roas=meta_roas, meta_cpa=meta_cpa)
 
     # ── 7. KPI Cards com comparativo ───────────────────────────
     cmp_txt = f" vs {periodo_dias} dias anteriores" if metricas_ant else ""
     st.markdown(f'<div class="sec-title">📊 KPIs — {periodo_label}{cmp_txt}</div>', unsafe_allow_html=True)
-    render_kpis_cards(metricas, deltas)
+    render_kpis_cards(metricas, deltas, df_completo=df, periodo_dias=periodo_dias)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1818,7 +1932,7 @@ def main() -> None:
     st.markdown('<hr style="border-color:rgba(59,130,246,0.1);margin:4px 0 20px;">', unsafe_allow_html=True)
 
     # ── 9. Health Score ─────────────────────────────────────────
-    score_data = calcular_health_score(metricas)
+    score_data = calcular_health_score(metricas, meta_roas=meta_roas, meta_cpa=meta_cpa)
     st.markdown('<div class="sec-title">🏆 Score de Saúde da Conta</div>', unsafe_allow_html=True)
     col_score, col_grafprinc = st.columns([1, 3], gap="medium")
     with col_score:
@@ -1832,7 +1946,7 @@ def main() -> None:
     st.markdown('<div class="sec-title">📈 Análise Visual</div>', unsafe_allow_html=True)
     col_g1, col_g2, col_g3 = st.columns([2, 2, 2], gap="medium")
     with col_g1:
-        st.plotly_chart(grafico_roas_campanhas(metricas), use_container_width=True)
+        st.plotly_chart(grafico_roas_campanhas(metricas, meta_roas=meta_roas), use_container_width=True)
     with col_g2:
         donut_por = st.radio("Distribuição por:", ["canal", "campanha"],
                              horizontal=True, label_visibility="collapsed")
@@ -1877,6 +1991,17 @@ def main() -> None:
         </div>
         """, unsafe_allow_html=True)
     else:
+        if diagnostico_desatualizado:
+            st.markdown("""
+            <div style="background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.30);
+                        border-radius:10px;padding:11px 16px;margin-bottom:12px;
+                        font-size:0.82rem;color:#FCD34D;display:flex;gap:10px;align-items:center;">
+                <span>⚠️</span>
+                <span><strong>Diagnóstico desatualizado</strong> — os filtros mudaram desde a última análise.
+                Clique em <strong>Gerar Diagnóstico</strong> para atualizar com os dados atuais.</span>
+            </div>
+            """, unsafe_allow_html=True)
+
         col_btn, _ = st.columns([1, 3])
         gerar_btn = col_btn.button("⚡ Gerar Diagnóstico", type="primary", use_container_width=True)
 
@@ -1884,12 +2009,15 @@ def main() -> None:
             provider = "Gemini" if api_key else "Groq"
             with st.spinner(f"🧠 {provider} analisando campanhas… pode levar alguns segundos"):
                 st.session_state.diagnostico_txt = gerar_diagnostico_ia(metricas, api_key, groq_key)
-            # Salva automaticamente no histórico da sessão
+            # Atualiza o hash salvo e o histórico
             if st.session_state.diagnostico_txt:
+                st.session_state.filtros_hash = filtros_hash
                 salvar_historico(st.session_state.diagnostico_txt, metricas, periodo_label)
 
         if st.session_state.diagnostico_txt:
             with st.chat_message("assistant", avatar="🤖"):
+                if diagnostico_desatualizado and not gerar_btn:
+                    st.caption("⚠️ Análise do período anterior — atualize clicando em Gerar Diagnóstico")
                 st.markdown(st.session_state.diagnostico_txt)
 
             col_dl1, col_dl2, _ = st.columns([1, 1, 2])
