@@ -979,16 +979,52 @@ def render_sidebar() -> tuple:
             help="Custo máximo aceitável por aquisição/conversão no seu nicho",
         )
 
+        # ── Logo do Relatório PDF ─────────────────────────────────
+        st.divider()
+        st.markdown("""
+        <div style="font-size:0.70rem;color:#64748B;font-weight:600;
+                    letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;">
+            🖼️ Logo do Relatório PDF
+        </div>
+        <div style="font-size:0.68rem;color:#475569;margin-bottom:8px;">
+            Aparece no cabeçalho do PDF exportado.
+        </div>
+        """, unsafe_allow_html=True)
+
+        logo_file = st.file_uploader(
+            "Logo da agência",
+            type=["png", "jpg", "jpeg"],
+            label_visibility="collapsed",
+            help="Recomendado: fundo branco ou transparente, largura máx. 400px",
+        )
+
+        # Persiste na sessão para não sumir ao interagir com outros widgets
+        if logo_file is not None:
+            st.session_state.logo_bytes = logo_file.read()
+
+        logo_bytes = st.session_state.get("logo_bytes", None)
+
+        if logo_bytes:
+            st.markdown("""
+            <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);
+                        border-radius:8px;padding:7px 12px;font-size:0.73rem;color:#6EE7B7;">
+                🖼️ Logo carregada — aparecerá no PDF
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("🗑️ Remover logo", use_container_width=True):
+                del st.session_state.logo_bytes
+                st.rerun()
+
         # ── Rodapé ───────────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
         <div style="border-top:1px solid rgba(59,130,246,0.1);padding-top:12px;">
-            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v2.0.0 · AdPerform AI</div>
+            <div style="font-size:0.65rem;color:#334155;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">v2.1.0 · AdPerform AI</div>
             <div style="font-size:0.63rem;color:#1E293B;margin-top:3px;">Gemini + Groq · Streamlit</div>
         </div>
         """, unsafe_allow_html=True)
 
-    return url_planilha, arquivo_upload, api_key, groq_key, meta_roas, meta_cpa
+    return url_planilha, arquivo_upload, api_key, groq_key, meta_roas, meta_cpa, logo_bytes
 
 
 
@@ -1440,13 +1476,15 @@ def render_alertas(metricas: dict, meta_roas: float = 3.0, meta_cpa: float = 60.
 # =============================================================
 
 def gerar_pdf(metricas: dict, diagnostico_txt: str,
-              periodo_label: str, fonte: str) -> bytes:
+              periodo_label: str, fonte: str,
+              logo_bytes: bytes = None) -> bytes:
     """
     Gera um relatório PDF profissional com KPIs, tabela de campanhas
     e diagnóstico da IA.
 
     Usa fpdf2 — sem dependências de sistema (compatível com Streamlit Cloud).
     Emojis e caracteres não-Latin são removidos automaticamente.
+    Se logo_bytes for fornecido, é exibido no cabeçalho do PDF.
     """
     import re
     from fpdf import FPDF
@@ -1477,16 +1515,35 @@ def gerar_pdf(metricas: dict, diagnostico_txt: str,
     # ── Cabeçalho ────────────────────────────────────────────
     pdf.set_fill_color(8, 14, 28)
     pdf.rect(0, 0, 210, 42, "F")
+
+    logo_ok = False
+    if logo_bytes:
+        try:
+            import io as _io
+            logo_buf = _io.BytesIO(logo_bytes)
+            # Posiciona logo à esquerda; máximo 45mm de largura, 22mm de altura
+            pdf.image(logo_buf, x=12, y=9, h=22, keep_aspect_ratio=True)
+            logo_ok = True
+        except Exception:
+            logo_ok = False  # fallback silencioso
+
+    # Texto do cabeçalho — desloca para direita se houver logo
+    x_txt = 65 if logo_ok else 12
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 22)
-    pdf.set_xy(12, 10)
+    pdf.set_font("Helvetica", "B", 20 if logo_ok else 22)
+    pdf.set_xy(x_txt, 10)
     pdf.cell(0, 10, "AdPerform AI", ln=True)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_xy(12, 23)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_xy(x_txt, 22)
     pdf.cell(0, 6, f"Relatorio de Performance | {periodo_label_pdf} | {fonte_pdf}", ln=True)
-    pdf.set_xy(12, 31)
+    pdf.set_xy(x_txt, 30)
     pdf.set_text_color(100, 150, 220)
     pdf.cell(0, 6, f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
+
+    # Linha divisória fina abaixo do cabeçalho
+    pdf.set_draw_color(37, 99, 235)
+    pdf.set_line_width(0.4)
+    pdf.line(0, 42, 210, 42)
 
     # ── KPIs ──────────────────────────────────────────────────
     pdf.set_text_color(0, 0, 0)
@@ -1850,7 +1907,7 @@ def main() -> None:
         mostrar_onboarding()
 
     # ── 1. Sidebar ─────────────────────────────────────────────
-    url_planilha, arquivo_upload, api_key, groq_key, meta_roas, meta_cpa = render_sidebar()
+    url_planilha, arquivo_upload, api_key, groq_key, meta_roas, meta_cpa, logo_bytes = render_sidebar()
 
     # ── 2. Carregamento de dados (Prioridade: Upload > Sheets > Simulados) ──
     df: Optional[pd.DataFrame] = None
@@ -2034,6 +2091,7 @@ def main() -> None:
                     st.session_state.diagnostico_txt,
                     periodo_label,
                     fonte,
+                    logo_bytes=logo_bytes,
                 )
                 col_dl2.download_button(
                     label="📄 Exportar PDF",
